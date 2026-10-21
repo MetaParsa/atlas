@@ -72,6 +72,7 @@ class SessionState(BaseModel):
     conditions: Conditions = Field(default_factory=Conditions)
     product_ids: list[str] = []          # last product picks shown
     selected_product_id: str | None = None
+    shop_ids: list[str] = []             # shops shown for the selected product (call_shop only accepts these)
     last_block_kind: Literal["none", "products", "shops"] = "none"
     calls: dict[str, dict] = {}          # call_id -> CallResult (S6)
     plan: dict | None = None             # «برنامه‌ی خرید» card (S6)

@@ -7,6 +7,7 @@ returns unusable JSON or the budget is spent.
 
 import re
 from collections.abc import Callable, Iterator
+from typing import Literal
 from datetime import datetime
 from pathlib import Path
 
@@ -16,7 +17,9 @@ from core.agent_loop import Emitter
 from core.llm import LLMClient
 from core.text import TEHRAN, format_million, normalize_fa, to_fa_digits, to_latin_digits
 from torob import store
+from torob import clock
 from torob.agents import advisor
+from torob.agents import shops as shops_agent
 from torob.models import Chip, Conditions, Need, RouterOutput, SessionState
 
 ROUTER_PROMPT = (Path(__file__).parent / "prompts" / "router.md").read_text(encoding="utf-8")
@@ -172,8 +175,51 @@ def _chip_set_budget(state: SessionState, em: Emitter, args: SetBudgetArgs) -> I
     else:
         apply_patch(state, {"budget_max": args.budget_max})
     yield em.emit("conditions", conditions_event(state))
-    if state.need:
-        yield from show_products(state, em)
+    yield from rerun_latest(state, em)
+
+
+class SetConditionsArgs(DirectTool):
+    """The conditions strip and the «همین رو بذار» relax chip. Only the keys actually sent are changed;
+    radius_km=None means «کل تهران», budget_max=None means «فرقی نداره»."""
+    radius_km: float | None = Field(None, ge=0.2, le=50)
+    payment: Literal["any", "credit", "credit_in_person"] | None = None
+    open: Literal["any", "now", "at_arrival"] | None = None
+    fast_delivery: bool | None = None
+    budget_max: int | None = Field(None, ge=1_000, le=100_000_000_000)
+    arrive_at: str | None = Field(None, max_length=5)
+    mode: Literal["walk", "car"] | None = None
+
+
+@direct("set_conditions", SetConditionsArgs)
+def _chip_set_conditions(state: SessionState, em: Emitter, args: SetConditionsArgs) -> Iterator[str]:
+    changed: list[str] = []
+    for k in args.model_fields_set:
+        v = getattr(args, k)
+        if v is None and k in ("radius_km", "budget_max"):
+            if getattr(state.conditions, k) is not None:
+                state.conditions = state.conditions.model_copy(update={k: None})
+                if k == "budget_max" and state.need:
+                    state.need = state.need.model_copy(update={"budget_max": None})
+                changed.append(k)
+        elif v is not None:
+            changed += apply_patch(state, {k: v})
+    yield em.emit("conditions", conditions_event(state))
+    if changed:
+        yield from rerun_latest(state, em)
+
+
+class CallShopArgs(DirectTool):
+    shop_id: str = Field(max_length=64)
+    product_id: str = Field(max_length=64)
+
+
+@direct("call_shop", CallShopArgs)
+def _chip_call_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iterator[str]:
+    """S6 runs the simulated call; only shops this session was shown, for the selected product."""
+    if args.shop_id not in state.shop_ids or args.product_id != state.selected_product_id:
+        yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
+        return
+    yield em.emit("call_start", {"call_id": "pending", "shop_id": args.shop_id, "pending": "S6"})
 
 
 @direct("prefer_brand", PreferBrandArgs)
@@ -230,10 +276,45 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
 
 
 def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
-    """Steps 2–3 arrive in S3 (find_shops: ranking, hours, travel, badges, category-only shops)."""
+    """Steps 2–3: shops that registered the selected product, compared on identical rows (R6), with counts (R4),
+    the junk line (R5), category-only shops (D14) and at most one relaxed condition, stated (R9)."""
+    if not state.selected_product_id:
+        yield say(state, em, "اول یه مدل انتخاب کن تا فروشنده‌هاش رو پیدا کنم.")
+        return
+    yield em.emit("status", {"text": "دارم فروشنده‌های نزدیک رو مقایسه می‌کنم…", "done": False})
+    res = shops_agent.find_shops(state.selected_product_id, state.conditions)
+    now = clock.now()
+    cards = [shops_agent.card(o, res.product, state.conditions, now) for o in res.items]
+    more = [shops_agent.card(o, res.product, state.conditions, now) for o in res.more[:20]]
+    state.shop_ids = [c["shop_id"] for c in cards + more] + [s["shop_id"] for s in res.category_only]
     state.last_block_kind = "shops"
-    yield em.emit("shop_cards", {"block_id": "shops", "replace": True, "product_id": state.selected_product_id,
-                                 "items": [], "pending": "S3"})
+    c = res.counts
+    steps = [f"{to_fa_digits(c['found'])} فروشنده ثبت کرده‌اند"]
+    if c["closed_at_arrival"]:
+        steps.append(f"{to_fa_digits(c['closed_at_arrival'])} تا موقع رسیدن بسته‌ان")
+    if c["suspicious_hidden"]:
+        steps.append(f"{to_fa_digits(c['suspicious_hidden'])} قیمت مشکوک کنار رفت")
+    steps.append("مرتب بر اساس قیمت، تازگی و فاصله")
+    yield em.emit("status", {"text": " → ".join(steps), "done": True})
+    junk = (f"{to_fa_digits(c['suspicious_hidden'])} قیمت مشکوک کنار گذاشته شد" if c["suspicious_hidden"] else None)
+    yield em.emit("shop_cards", {
+        "block_id": "shops", "replace": True,
+        "product": {"product_id": res.product["product_id"], "title": res.product["title"]},
+        "items": cards, "more": more, "more_count": len(res.more),
+        "category_only": res.category_only, "notes": res.notes, "junk_line": junk,
+        "relaxed": res.relaxed, "demo_time": now.strftime("%H:%M") if clock.is_demo() else None,
+        "disclaimer": "نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است.",
+    })
+    if not cards:
+        yield say(state, em, res.notes[0] if res.notes else "نزدیکت فروشنده‌ای برای این مدل ثبت نشده.")
+
+
+def rerun_latest(state: SessionState, em: Emitter) -> Iterator[str]:
+    """After a condition change, re-run the block the user is looking at (R15)."""
+    if state.last_block_kind == "shops" and state.selected_product_id:
+        yield from show_shops(state, em)
+    elif state.need:
+        yield from show_products(state, em)
 
 
 def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, chip: Chip | None) -> Iterator[str]:
@@ -267,8 +348,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield say(state, em, out.message)
         yield from show_products(state, em)
     elif out.intent == "refine":
-        if state.need and state.last_block_kind == "products":   # the cards must reflect the new conditions
-            yield from show_products(state, em)
+        if state.need and state.last_block_kind in ("products", "shops"):   # the cards must reflect the new conditions
+            yield from rerun_latest(state, em)
         else:
             yield say(state, em, out.message or "شرایط رو عوض کردم.")
     else:

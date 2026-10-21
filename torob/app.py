@@ -103,8 +103,24 @@ class ChatIn(BaseModel):
     chip: Chip | None = None
 
 
+class RefineIn(BaseModel):
+    """A conditions-strip change; same keys as the set_conditions tool (validated there)."""
+    conditions: dict = Field(default_factory=dict)
+
+
 @app.post("/api/chat")
 def chat(body: ChatIn, request: Request, sid: str | None = Cookie(default=None, max_length=64)):
+    return _turn_response(request, sid, text=body.text, chip=body.chip)
+
+
+@app.post("/api/refine")
+def refine(body: RefineIn, request: Request, sid: str | None = Cookie(default=None, max_length=64)):
+    """The strip re-runs the latest block without the LLM (R15)."""
+    chip = Chip(label="شرایط", kind="direct_call", tool="set_conditions", args=body.conditions)
+    return _turn_response(request, sid, chip=chip)
+
+
+def _turn_response(request: Request, sid: str | None, text: str | None = None, chip: Chip | None = None):
     if not chat_limit.allow(client_ip(request)):
         return JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
     adb = appdb()
@@ -118,7 +134,7 @@ def chat(body: ChatIn, request: Request, sid: str | None = Cookie(default=None, 
 
     def stream():
         try:
-            yield from run_turn(llm(), state, em, text=body.text, chip=body.chip)
+            yield from run_turn(llm(), state, em, text=text, chip=chip)
         finally:
             adb.save(sid, state)   # also when the client disconnects mid-stream
             with _busy_lock:
