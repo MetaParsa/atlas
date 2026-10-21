@@ -1,9 +1,9 @@
 """Step 1 advisor (spec §6.3 + §0.2 A1, R7): need → 2–3 product picks, compared honestly.
 
 Everything here is code: counts, prices, labels and the «چرا» line come from the data. Labels are assigned *after*
-the picks are chosen, from facts about the shown cards («ارزان‌ترین» = cheapest of these cards), so a label can never
-be false. A spec row appears only when ≥ 2 cards have it and the values differ; a card with < 2 spec lines shows none.
-A named model («گوشی سامسونگ S25 FE») is matched directly so the router can skip to its sellers.
+the picks are chosen, from facts about the shown cards, so a label can never be false. A spec row appears only when
+≥ 2 cards have it and the values differ; a card with < 2 spec lines shows none. A named model («گوشی سامسونگ S25 FE»)
+is matched directly so the router can skip to its sellers. Notes describe the cards actually shown.
 """
 
 import json
@@ -12,18 +12,18 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from core.text import format_million, format_price_short, normalize_fa, to_fa_digits
+from core.text import format_price_short, normalize_fa, to_fa_digits
 from torob import search, store
 from torob.logic.geo import bbox, haversine_m
 from torob.models import Chip, Conditions, Need
 
 SELLER_FLOOR = 3          # A1: a pick needs ≥ 3 sellers nearby, relaxed to 2, then 1, saying so
-OVER_BUDGET_SLACK = 0.10  # within 10% over budget is shown as «… ٪ بالاتر از بودجه، ولی …»
+OVER_BUDGET_SLACK = 0.10  # up to 10% over budget is shown («۷٪ بالاتر از بودجه، ولی …»); more is not shown as a fit
 FRESH_DAYS = 30
 _SKIP_SPEC_KEYS = {"نام محصول", "برند", "شرکت سازنده", "سازنده", "تاریخ معرفی", "مدل", "نام", "کد محصول"}
 _UNKNOWN_VALUES = {"نامعلوم", "ثبت نشده", "-", "ندارد اطلاعات"}
 LABELS = {"best_value": "بهترین ارزش", "cheapest": "ارزان‌ترین", "most_available": "بیشترین فروشنده",
-          "other": "گزینه‌ی دیگر", "named": "همین مدل"}
+          "closest_match": "نزدیک‌ترین به درخواستت", "other": "گزینه‌ی دیگر", "named": "همین مدل"}
 
 
 @dataclass
@@ -42,24 +42,38 @@ class Pick:
     c: search.Candidate
     role: str
     area: AreaStat
-    in_area: bool
+    in_area: bool            # sellers counted within the chosen radius
+    whole_city: bool = False # the radius is «کل تهران», so «نزدیکت» would be wrong
     over_budget_pct: int | None = None
     same_title_ids: list[str] = field(default_factory=list)
     spec_lines: list[str] = field(default_factory=list)
     why: str = ""
 
     @property
+    def area_priced(self) -> bool:
+        return self.in_area and bool(self.area.prices)
+
+    @property
     def price(self) -> int:
-        return (self.area.median if self.in_area else None) or self.c.price_median or 0
+        """Typical registered price used for comparing and budget: nearby median, else Tehran median."""
+        return (self.area.median if self.area_priced else None) or self.c.price_median or 0
+
+    @property
+    def low(self) -> int | None:
+        return self.area.prices[0] if self.area_priced else self.c.price_min
+
+    @property
+    def where(self) -> str:
+        return "در تهران" if self.whole_city or not self.in_area else "نزدیکت"
 
     def card(self) -> dict:
-        area = self.in_area and bool(self.area.prices)
+        priced = self.area_priced
         return {
             "product_id": self.c.product_id, "title": self.c.title, "brand": self.c.brand, "image": self.c.image,
             "category": self.c.category, "role": self.role, "role_label": LABELS[self.role],
-            "price_min": self.area.prices[0] if area else self.c.price_min,
-            "price_max": self.area.prices[-1] if area else self.c.price_max,
-            "price_scope": "area" if area else "tehran",   # «قیمت ثبت‌شده نزدیکت» vs «در کل تهران»
+            "price_min": self.area.prices[0] if priced else self.c.price_min,
+            "price_max": self.area.prices[-1] if priced else self.c.price_max,
+            "price_scope": "area" if priced and not self.whole_city else "tehran",
             "sellers_in_area": self.area.sellers, "sellers_total": self.c.sellers_total,
             "fresh_in_area": self.area.fresh, "over_budget_pct": self.over_budget_pct,
             "spec_lines": self.spec_lines, "same_title_variants": len(self.same_title_ids), "why": self.why,
@@ -70,13 +84,13 @@ class Pick:
 class AdvisorResult:
     picks: list[Pick]
     categories: list[str]
-    notes: list[str]                     # honest caveats shown as one line («فقط دو فروشنده‌ی نزدیک…»)
-    compare_rows: list[dict]             # [{key, values}] only for specs ≥ 2 cards share and that differ
-    question: dict | None                # {text, chips}
+    notes: list[str]
+    compare_rows: list[dict]
+    question: dict | None
     floor_used: int
     in_area: bool
-    named: Pick | None = None            # the user named this exact model → router skips to shops
-    n_candidates: int = 0                # for the status line: «۴۸ مدل پیدا شد → ۱۲ تا نزدیکت فروشنده دارن»
+    named: Pick | None = None
+    n_candidates: int = 0
     n_nearby: int = 0
 
 
@@ -130,17 +144,54 @@ def spec_pairs(specs_json: str) -> list[tuple[str, str]]:
 
 
 def _named(need: Need, reps: list[search.Candidate], stats: dict[str, AreaStat], cond: Conditions) -> Pick | None:
-    """The user's text contains a model code and a candidate's title has all of those codes."""
+    """The user's text has a model code, and a title has all those codes and no variant word they didn't say."""
     text = " ".join(filter(None, [need.named_product, need.product_type, *need.keywords]))
     codes = search.model_tokens(text)
     if not codes:
         return None
-    matches = [c for c in reps if all(code in search.title_tokens(c.title_norm) for code in codes)]
+    asked = search.title_tokens(normalize_fa(text))
+    # A named brand must be in the title too: the data tags e.g. a «یونیوا S25» with brand «سامسونگ».
+    brands = search.brands_in(text, {normalize_fa(c.brand) for c in reps if c.brand})
+    want = search.variants(asked)
+    matches = [c for c in reps if all(code in (tt := search.title_tokens(c.title_norm)) for code in codes)
+               and search.variants(tt) == want            # «S25» ≠ «S25 FE»; «S25 اولترا» = «S25 Ultra»
+               and (not brands or any(b in c.title_norm for b in brands))]
     if not matches:
         return None
     best = max(matches, key=lambda c: (stats.get(c.product_id, AreaStat()).sellers, c.sellers_total, -c.rank))
     st = stats.get(best.product_id, AreaStat())
-    return Pick(best, "named", st, in_area=st.sellers > 0)
+    return Pick(best, "named", st, in_area=st.sellers > 0, whole_city=cond.radius_km is None)
+
+
+def _dedupe(cands: list[search.Candidate]) -> tuple[list[search.Candidate], dict[str, list[str]]]:
+    """Same-title products: keep the one most sellers list, remember the rest («۳ نسخه با همین اسم»)."""
+    groups: dict[str, list[search.Candidate]] = {}
+    for c in sorted(cands, key=lambda c: c.rank):
+        groups.setdefault(c.title_norm, []).append(c)
+    reps, same = [], {}
+    for g in groups.values():
+        rep = max(g, key=lambda c: c.sellers_total)
+        rep.rank = min(c.rank for c in g)
+        reps.append(rep)
+        same[rep.product_id] = [c.product_id for c in g if c is not rep]
+    reps.sort(key=lambda c: c.rank)
+    return reps, same
+
+
+def _brand_filter(need: Need, reps: list[search.Candidate], notes: list[str]) -> list[search.Candidate]:
+    """A chosen brand (chip) or a brand named in the text («آیفون» = اپل) narrows the picks; say so if it can't."""
+    known = {normalize_fa(c.brand) for c in reps if c.brand}
+    wanted = {normalize_fa(b) for b in need.brand_pref if b}
+    if not wanted:
+        text = " ".join(filter(None, [need.named_product, need.product_type, *need.keywords]))
+        wanted = search.brands_in(text, known)
+    if not wanted:
+        return reps
+    branded = [c for c in reps if c.brand and normalize_fa(c.brand) in wanted]
+    if need.brand_pref and len(branded) < 2:
+        names = "، ".join(need.brand_pref)
+        notes.append(f"از برند {names} چیز زیادی ثبت نشده" + ("؛ همین یکی رو آوردم." if branded else "؛ بقیه رو آوردم."))
+    return branded if branded and (need.brand_pref or len(branded) >= 2) else reps
 
 
 def pick_products(need: Need, cond: Conditions) -> AdvisorResult:
@@ -149,59 +200,51 @@ def pick_products(need: Need, cond: Conditions) -> AdvisorResult:
     if not cands:
         return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم."], [], None, 0, False)
 
-    # Same-title products: keep the one most sellers list, remember the rest («۳ نسخه با همین اسم»).
-    groups: dict[str, list[search.Candidate]] = {}
-    for c in sorted(cands, key=lambda c: c.rank):
-        groups.setdefault(c.title_norm, []).append(c)
-    reps, same_title = [], {}
-    for g in groups.values():
-        rep = max(g, key=lambda c: c.sellers_total)
-        rep.rank = min(c.rank for c in g)
-        reps.append(rep)
-        same_title[rep.product_id] = [c.product_id for c in g if c is not rep]
-    reps.sort(key=lambda c: c.rank)
-
-    # The user named a brand («آیفون» = اپل): keep that brand when it has at least two candidates.
-    text = " ".join(filter(None, [need.named_product, need.product_type, *need.keywords, *need.brand_pref]))
-    named_brands = search.brands_in(text, {normalize_fa(c.brand) for c in reps if c.brand})
-    if named_brands:
-        branded = [c for c in reps if c.brand and normalize_fa(c.brand) in named_brands]
-        if len(branded) >= 2:
-            reps = branded
-
+    reps, same_title = _dedupe(cands)
+    reps = _brand_filter(need, reps, notes)
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
-    budget = cond.budget_max or need.budget_max
+    budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)
+    whole_city = cond.radius_km is None
 
-    def area_price(c: search.Candidate) -> int:
+    def typical(c: search.Candidate) -> int:
         st = stats.get(c.product_id)
         return (st.median if st else None) or c.price_median or 0
 
-    # A1 seller floor: ≥ 3 nearby, relax to 2, then 1; with nobody nearby, fall back to all Tehran and say so.
-    pool, floor_used, in_area = [], SELLER_FLOOR, True
+    # A1 seller floor on availability alone: ≥ 3 nearby, relax to 2, then 1; nobody nearby → all Tehran.
+    in_area, floor_used, pool = True, SELLER_FLOOR, []
     for floor in (SELLER_FLOOR, 2, 1):
         pool = [c for c in reps if stats.get(c.product_id, AreaStat()).sellers >= floor]
-        if budget:
-            pool = [c for c in pool if area_price(c) <= budget * (1 + OVER_BUDGET_SLACK)]
         if len(pool) >= 2 or (floor == 1 and pool):
             floor_used = floor
             break
     if not pool:
-        in_area = False
-        pool = [c for c in reps if not budget or (c.price_median or 0) <= budget * (1 + OVER_BUDGET_SLACK)] or reps
+        in_area, pool = False, reps
         notes.append("نزدیک تو فروشنده‌ای برای این ثبت نشده؛ این‌ها از کل تهرانه.")
-    elif floor_used < SELLER_FLOOR:
-        notes.append("فقط یک فروشنده‌ی نزدیک ثبت کرده." if floor_used == 1 else "فقط دو فروشنده‌ی نزدیک ثبت کرده‌اند.")
-    price = {c.product_id: (area_price(c) if in_area else c.price_median or 0) for c in pool}
-    if budget and not any(p <= budget for p in price.values()):
-        notes.append(f"چیزی زیر {format_price_short(budget)} پیدا نشد؛ نزدیک‌ترین‌ها به بودجه رو آوردم.")
+
+    price = {c.product_id: (typical(c) if in_area else c.price_median or 0) for c in pool}
+    question = None
+    if budget:
+        fits = [c for c in pool if price[c.product_id] <= budget * (1 + OVER_BUDGET_SLACK)]
+        if fits:
+            pool = fits
+        else:   # nothing fits: show the cheapest real options and offer a realistic budget, never «۵۹۴۰۰٪ بالاتر»
+            pool = sorted(pool, key=lambda c: price[c.product_id])[:2]
+            cheapest = price[pool[0].product_id]
+            notes.append(f"چیزی زیر {format_price_short(budget)} پیدا نشد؛ ارزان‌ترین {'نزدیکت' if in_area else 'در تهران'} "
+                         f"حدود {format_price_short(cheapest)} است.")
+            target = _round_budget(cheapest)
+            question = {"text": f"بودجه رو تا {format_price_short(target)} ببرم بالا؟", "chips": [
+                Chip(label=f"آره، تا {format_price_short(target)}", kind="direct_call", tool="set_budget",
+                     args={"budget_max": target}).model_dump(),
+                Chip(label="نه", kind="direct_call", tool="noop", args={}).model_dump()]}
 
     pool = pool[:40]   # keep relevance: only the best text matches compete
     avail = {c.product_id: stats.get(c.product_id, AreaStat()).sellers for c in pool}
     n = len(pool)
     rel = {c.product_id: 1 - i / max(1, n - 1) for i, c in enumerate(pool)}
     max_avail = max(avail.values()) or 1
-    med_price = sorted(price.values())[len(price) // 2] or 1
+    med_price = sorted(price[c.product_id] for c in pool)[n // 2] or 1
 
     def value_score(c: search.Candidate) -> float:
         cheapness = min(1.0, med_price / max(1, price[c.product_id]))
@@ -213,34 +256,44 @@ def pick_products(need: Need, cond: Conditions) -> AdvisorResult:
             if all(not search.near_duplicate(c.title_norm, x.title_norm) for x in chosen):
                 chosen.append(c)
                 break
-    picks = [Pick(c, "other", stats.get(c.product_id, AreaStat()), in_area, same_title_ids=same_title.get(c.product_id, []))
-             for c in chosen]
+    picks = [Pick(c, "other", stats.get(c.product_id, AreaStat()), in_area, whole_city,
+                  same_title_ids=same_title.get(c.product_id, [])) for c in chosen]
     _label(picks)
-    for p in picks:
+    for p in [*picks, *([named] if named else [])]:
         if budget and p.price > budget:
-            p.over_budget_pct = max(1, round((p.price / budget - 1) * 100))
+            pct = round((p.price / budget - 1) * 100)
+            p.over_budget_pct = max(1, pct) if pct <= OVER_BUDGET_SLACK * 100 else None
         pairs = spec_pairs(p.c.specs)
         p.spec_lines = [f"{k}: {v}" for k, v in pairs[:3]] if len(pairs) >= 2 else []   # R7: ≥ 2 lines or none
-        p.why = why_line(p)
     if named:
         named.same_title_ids = same_title.get(named.c.product_id, [])
-        named.why = why_line(named)
-    return AdvisorResult(picks, cats, notes, _compare_rows(picks), None if named else _question(need, cond, price, picks),
+    for p in [*picks, *([named] if named else [])]:
+        p.why = why_line(p, budget)
+
+    if in_area and picks and min(p.area.sellers for p in picks) < SELLER_FLOOR:
+        m = min(p.area.sellers for p in picks)
+        notes.append("بعضی از این‌ها فقط یک فروشنده‌ی نزدیک دارن." if m == 1 else
+                     "بعضی از این‌ها فقط دو فروشنده‌ی نزدیک دارن.")
+    if question is None and not named:
+        question = _question(need, cond, price, picks)
+    return AdvisorResult(picks, cats, notes, _compare_rows(picks), None if named else question,
                          floor_used, in_area, named, n_candidates=len(reps),
                          n_nearby=sum(1 for c in reps if stats.get(c.product_id, AreaStat()).sellers > 0))
 
 
 def _label(picks: list[Pick]) -> None:
-    """Truthful labels from the shown cards: the first pick is the value choice; «ارزان‌ترین» and «بیشترین فروشنده»
-    go only to the card that really is cheapest / most available among these cards (ties → no label)."""
+    """Truthful labels from the shown cards (ties → no label):
+    «ارزان‌ترین» = lowest typical price of these cards; «بیشترین فروشنده» = most sellers;
+    «بهترین ارزش» only if the first pick is at or below the cards' median price and has at least their median sellers,
+    else «نزدیک‌ترین به درخواستت» (it is the best text match)."""
     if not picks:
         return
-    picks[0].role = "best_value"
-    rest = picks[1:]
     prices = [p.price for p in picks]
     sellers = [p.area.sellers if p.in_area else p.c.sellers_total for p in picks]
-    for p in rest:
-        i = picks.index(p)
+    first = picks[0]
+    good_value = prices[0] <= statistics.median(prices) and sellers[0] >= statistics.median(sellers)
+    first.role = "best_value" if good_value else "closest_match"
+    for i, p in enumerate(picks[1:], start=1):
         if prices[i] == min(prices) and prices.count(min(prices)) == 1:
             p.role = "cheapest"
         elif sellers[i] == max(sellers) and sellers.count(max(sellers)) == 1:
@@ -261,30 +314,28 @@ def _compare_rows(picks: list[Pick]) -> list[dict]:
         if n < 2:
             continue
         vals = [d.get(k) for d in per]
-        distinct = {normalize_fa(v).replace(" ", "") for v in vals if v}
-        if len(distinct) >= 2:
+        if len({normalize_fa(v).replace(" ", "") for v in vals if v}) >= 2:
             rows.append({"key": k, "values": [v or "ثبت نشده" for v in vals]})
         if len(rows) == 3:
             break
     return rows
 
 
-def why_line(p: Pick) -> str:
+def why_line(p: Pick, budget: int | None = None) -> str:
     """One Persian line from the card's own facts (no LLM, no opinions, nothing invented)."""
-    where = "نزدیکت" if p.in_area else "در کل تهران"
     sellers = p.area.sellers if p.in_area else p.c.sellers_total
-    low = p.area.prices[0] if p.in_area and p.area.prices else p.c.price_min
     parts = []
     if p.over_budget_pct:
-        parts.append(f"{to_fa_digits(p.over_budget_pct)}٪ بالاتر از بودجه، ولی")
+        parts.append(f"قیمت معمولش {to_fa_digits(p.over_budget_pct)}٪ بالاتر از بودجه، ولی")
     if p.role == "most_available":
-        parts.append(f"بیشترین فروشنده {where} ({to_fa_digits(sellers)} تا)")
+        parts.append(f"بیشترین فروشنده {p.where} ({to_fa_digits(sellers)} تا)")
     else:
         if p.role == "cheapest":
-            parts.append("ارزان‌ترین قیمت ثبت‌شده بین این‌ها ·")
-        parts.append(f"{to_fa_digits(sellers)} فروشنده {where}")
-    if low:
-        parts.append(f"· قیمت ثبت‌شده از {format_price_short(low)}")
+            parts.append("قیمت معمولش از بقیه‌ی این‌ها کمتره ·")
+        parts.append(f"{to_fa_digits(sellers)} فروشنده {p.where}")
+    if p.low:
+        scope = "" if p.area_priced or not p.in_area else " (در کل تهران)"
+        parts.append(f"· قیمت ثبت‌شده از {format_price_short(p.low)}{scope}")
     if p.in_area and p.area.fresh:
         parts.append(f"· {to_fa_digits(p.area.fresh)} قیمت این ماه به‌روز شده")
     return " ".join(parts)
@@ -292,13 +343,13 @@ def why_line(p: Pick) -> str:
 
 def _question(need: Need, cond: Conditions, price: dict, picks: list[Pick]) -> dict | None:
     """At most one splitting question, as direct_call chips (no LLM, no re-parsing)."""
-    if not (cond.budget_max or need.budget_max) and len(price) >= 3:
+    if not cond.budget_max and len(price) >= 3:
         vals = sorted(v for v in price.values() if v)
         if vals and vals[-1] / vals[0] >= 3:
             tiers = sorted({_round_budget(vals[len(vals) // 4]), _round_budget(vals[len(vals) // 2]),
                             _round_budget(vals[3 * len(vals) // 4])})
-            chips = [Chip(label=f"تا {format_price_short(t)}", kind="direct_call", tool="set_budget", args={"budget_max": t})
-                     for t in tiers if t > 0]
+            chips = [Chip(label=f"تا {format_price_short(t)}", kind="direct_call", tool="set_budget",
+                          args={"budget_max": t}) for t in tiers if t > 0]
             chips.append(Chip(label="فرقی نداره", kind="direct_call", tool="set_budget", args={"budget_max": None}))
             return {"text": "بودجه‌ت حدوداً چقدره؟", "chips": [c.model_dump() for c in chips]}
     brands = list(dict.fromkeys(p.c.brand for p in picks if p.c.brand))

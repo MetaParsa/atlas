@@ -59,7 +59,10 @@ def rule_route(text: str) -> RouterOutput:
         patch["payment"] = "credit"
     if _CALL.search(t):
         return RouterOutput(intent="call_shop", conditions_patch=patch)
-    words = [w for w in re.sub(r"[^\w\s]", " ", _BUDGET.sub(" ", t)).split() if w not in _STOP and not w.isdigit()]
+    # Numbers outside the budget phrase are specs («۲۰ وات», «۲۰۰۰۰», «۲۵ آمپر») and stay in the query.
+    words = [w for w in re.sub(r"[^\w\s]", " ", _BUDGET.sub(" ", t)).split() if w not in _STOP]
+    if words and all(w.isdigit() for w in words):
+        words = []
     if not words:
         return RouterOutput(intent="refine" if patch else "other", conditions_patch=patch)
     need = Need(product_type=" ".join(words[:3]), keywords=[" ".join(words)], budget_max=budget)
@@ -140,7 +143,16 @@ def direct(name: str, args_model: type[DirectTool]):
 
 
 class SetBudgetArgs(DirectTool):
-    budget_max: int | None = Field(None, gt=0, le=100_000_000_000)
+    budget_max: int | None = Field(None, ge=1_000, le=100_000_000_000)
+
+
+class NoArgs(DirectTool):
+    pass
+
+
+@direct("noop", NoArgs)
+def _chip_noop(state: SessionState, em: Emitter, args: NoArgs) -> Iterator[str]:
+    yield say(state, em, "باشه.")
 
 
 class PreferBrandArgs(DirectTool):
@@ -153,19 +165,22 @@ class ShowShopsArgs(DirectTool):
 
 @direct("set_budget", SetBudgetArgs)
 def _chip_set_budget(state: SessionState, em: Emitter, args: SetBudgetArgs) -> Iterator[str]:
-    if apply_patch(state, {"budget_max": args.budget_max}) or args.budget_max is None:
-        state.conditions = state.conditions.model_copy(update={"budget_max": args.budget_max})
-        yield em.emit("conditions", conditions_event(state))
+    if args.budget_max is None:   # «فرقی نداره»: clear it everywhere, or the old need budget would come back
+        state.conditions = state.conditions.model_copy(update={"budget_max": None, "budget_min": None})
+        if state.need:
+            state.need = state.need.model_copy(update={"budget_max": None, "budget_min": None})
+    else:
+        apply_patch(state, {"budget_max": args.budget_max})
+    yield em.emit("conditions", conditions_event(state))
     if state.need:
         yield from show_products(state, em)
 
 
 @direct("prefer_brand", PreferBrandArgs)
 def _chip_prefer_brand(state: SessionState, em: Emitter, args: PreferBrandArgs) -> Iterator[str]:
+    """Sets the brand preference only; keywords stay the user's own (no stacking «اپل سامسونگ»)."""
     if state.need:
         state.need = state.need.model_copy(update={"brand_pref": [args.brand] if args.brand else []})
-        if args.brand:
-            state.need.keywords = [f"{k} {args.brand}" for k in state.need.keywords] or [args.brand]
         yield from show_products(state, em, ask=False)
 
 
@@ -192,7 +207,9 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
     if res.named:
         card = res.named.card()
         state.product_ids, state.selected_product_id, state.last_block_kind = [card["product_id"]], card["product_id"], "products"
-        yield em.emit("status", {"text": f"همین مدل رو پیدا کردم · {to_fa_digits(res.named.area.sellers)} فروشنده نزدیکت", "done": True})
+        n = res.named.area.sellers
+        found = f"{to_fa_digits(n)} فروشنده {res.named.where}" if n else "نزدیکت فروشنده‌ای ثبت نشده"
+        yield em.emit("status", {"text": f"همین مدل رو پیدا کردم · {found}", "done": True})
         yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(card)],
                                         "compare_rows": [], "notes": res.notes})
         yield from show_shops(state, em)   # R7: a named model skips straight to its sellers
@@ -250,7 +267,10 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield say(state, em, out.message)
         yield from show_products(state, em)
     elif out.intent == "refine":
-        yield say(state, em, out.message or "شرایط رو عوض کردم.")
+        if state.need and state.last_block_kind == "products":   # the cards must reflect the new conditions
+            yield from show_products(state, em)
+        else:
+            yield say(state, em, out.message or "شرایط رو عوض کردم.")
     else:
         # call_shop / ask_results land in S3–S6
         yield say(state, em, out.message or "بگو دنبال چه چیزی هستی تا برات پیدا کنم.")

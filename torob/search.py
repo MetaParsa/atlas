@@ -49,6 +49,9 @@ def queries_for(need: Need) -> list[str]:
     base = [normalize_fa(k) for k in (need.keywords or [need.product_type]) if k and k.strip()]
     if need.named_product:
         base.insert(0, normalize_fa(need.named_product))
+    for brand in need.brand_pref[:1]:   # a chosen brand also widens the search, so its products are found
+        if brand:
+            base = [f"{base[0]} {normalize_fa(brand)}"] + base if base else [normalize_fa(brand)]
     out: list[str] = []
     for q in base:
         out.append(q)
@@ -110,13 +113,26 @@ def infer_categories(hits: list[dict], head: str, max_cats: int = 2) -> list[str
 
 
 _MODEL_TOKEN = re.compile(r"^(?=.*\d)(?=.*[a-z])[a-z0-9\-]{2,}$|^[a-z]{2,}\d+[a-z0-9]*$")
+# «4G», «12V», «25A», «1TB», «20000mah» describe a spec, not a model.
+_UNIT_TOKEN = re.compile(r"^\d+(?:[.,]\d+)?(?:gb|tb|mb|g|mah|ma|w|v|a|mp|hz|khz|mhz|k|m|cm|mm|kw|kva|va|l|inch|in)$")
+# Variant words that make a different model: «S25» ≠ «S25 FE» ≠ «S25 Ultra».
+_VARIANT_CANON = {"fe": "fe", "ultra": "ultra", "اولترا": "ultra", "الترا": "ultra", "plus": "plus", "پلاس": "plus",
+                  "pro": "pro", "پرو": "pro", "max": "max", "مکس": "max", "lite": "lite", "لایت": "lite",
+                  "mini": "mini", "مینی": "mini", "neo": "neo", "نیو": "neo", "edge": "edge", "prime": "prime",
+                  "nc": "nc", "se": "se"}
+VARIANT_WORDS = set(_VARIANT_CANON)
+
+
+def variants(tokens: set[str]) -> set[str]:
+    """Canonical variant words in a token set: «اولترا» and «Ultra» are the same variant."""
+    return {_VARIANT_CANON[t] for t in tokens if t in _VARIANT_CANON}
 BRAND_ALIASES = {"ایفون": "اپل", "iphone": "اپل", "apple": "اپل", "samsung": "سامسونگ", "xiaomi": "شیائومی",
                  "anker": "انکر"}
 
 
 def model_tokens(text: str) -> list[str]:
     """Tokens that look like a model code: «S25», «A3949», «R50i», «EP-TA800»."""
-    return [t for t in to_latin_digits(normalize_fa(text)).split() if _MODEL_TOKEN.match(t)]
+    return [t for t in to_latin_digits(normalize_fa(text)).split() if _MODEL_TOKEN.match(t) and not _UNIT_TOKEN.match(t)]
 
 
 def brands_in(text: str, known: set[str]) -> set[str]:
