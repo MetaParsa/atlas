@@ -74,8 +74,9 @@ def _payments(con: sqlite3.Connection, shop_ids: list[str]) -> dict[str, list[tu
     return out
 
 
-def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], int]:
-    """All shops that registered the product, variants grouped per shop. Returns (product, offers, suspicious_only)."""
+def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], set[str]]:
+    """All shops that registered the product, variants grouped per shop.
+    Returns (product, offers, ids of shops whose only prices are suspicious — set aside, still sellers)."""
     con = store.get()
     prod = con.execute("SELECT product_id, title, category, brand, image FROM products WHERE product_id = ?",
                        (product_id,)).fetchone()
@@ -90,12 +91,12 @@ def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], int]:
     shops = {r["shop_id"]: dict(r) for r in con.execute(
         f"SELECT * FROM shops WHERE shop_id IN ({','.join('?' * len(by_shop))})", list(by_shop))} if by_shop else {}
     pays = _payments(con, list(by_shop))
-    offers, suspicious_only = [], 0
+    offers, suspicious_only = [], set()
     for sid, rs in by_shop.items():
         sane = [r for r in rs if r["price_flag"] == "ok"]
         flags = {r["price_flag"] for r in rs}
         if not sane and flags <= {"suspicious_low", "suspicious_high"}:
-            suspicious_only += 1          # R5: set aside, counted in the grey line
+            suspicious_only.add(sid)       # R5: set aside, counted in the grey line
             continue
         ref = sane or rs
         changed = max((r["price_changed_at"] for r in ref if r["price_changed_at"]), default=None)
@@ -131,20 +132,29 @@ def _credit_ok(o: ShopOffer, payment: str) -> bool:
     return any(ch == "in_person" for _, ch in o.payments)
 
 
-def _passes(o: ShopOffer, c: Conditions, now: datetime) -> bool:
-    if c.radius_km and o.meters > c.radius_km * 1000:
-        return False
+def _in_radius(o: ShopOffer, c: Conditions) -> bool:
+    return not c.radius_km or o.meters <= c.radius_km * 1000
+
+
+def _passes_terms(o: ShopOffer, c: Conditions) -> bool:
+    """Purchase terms only (credit, express delivery, budget); radius and opening are checked separately."""
     if not _credit_ok(o, c.payment):
         return False
     if c.fast_delivery and not o.shop["fast_delivery"]:
         return False
-    if c.budget_max and o.priced and o.price_min > c.budget_max * 1.10:
-        return False
-    if c.open == "now" and H.status_at(H.from_json(o.shop["hours"]), now)[0] == "closed":
-        return False
-    if c.open == "at_arrival" and o.open_state == "no":
+    if c.budget_max and (not o.priced or o.price_min > c.budget_max * 1.10):   # no price = can't claim it fits
         return False
     return True
+
+
+def _passes_open(o: ShopOffer, c: Conditions, now: datetime) -> bool:
+    if c.open == "now" and H.status_at(H.from_json(o.shop["hours"]), now)[0] == "closed":
+        return False
+    return not (c.open == "at_arrival" and o.open_state == "no")
+
+
+def _passes(o: ShopOffer, c: Conditions, now: datetime) -> bool:
+    return _in_radius(o, c) and _passes_terms(o, c) and _passes_open(o, c, now)
 
 
 def _freshness(changed_at: str | None, now: datetime) -> float:
@@ -170,8 +180,11 @@ def _score(items: list[ShopOffer], now: datetime) -> None:
             o.score -= 0.5          # «قیمت ثبت نشده» never ranks first
 
 
-def _badges(items: list[ShopOffer]) -> None:
-    """Facts about the whole compared set; a badge goes to a unique winner only (ties → no badge)."""
+def _badges(compared: list[ShopOffer], shown: list[ShopOffer]) -> None:
+    """A badge is a fact about the whole compared set (every shop that passed), given to its unique winner only
+    if that winner is one of the shown cards (ties → no badge)."""
+    items = compared
+
     def unique_best(key, reverse=False, cond=lambda o: True):
         pool = [o for o in items if cond(o)]
         if len(pool) < 2:
@@ -186,10 +199,11 @@ def _badges(items: list[ShopOffer]) -> None:
                                    cond=lambda o: o.closes is not None),
         "freshest_price": unique_best(lambda o: o.changed_at or "", reverse=True, cond=lambda o: o.changed_at),
     }
+    shown_ids = {id(o) for o in shown}
     for badge, o in picks.items():
-        if o:
+        if o and id(o) in shown_ids:
             o.badges.append(badge)
-    for o in items:
+    for o in shown:
         if o.payments:
             o.badges.append("credit")
 
@@ -264,9 +278,17 @@ def _relax_options(c: Conditions) -> list[tuple[str, dict, str]]:
     if c.radius_km:
         for r in (c.radius_km * 2, c.radius_km * 4):
             if r <= 50:
-                opts.append(("radius_km", {"radius_km": r}, f"تا {to_fa_digits(int(r))} کیلومتر"))
+                opts.append(("radius_km", {"radius_km": r}, f"تا {km_label(r)}"))
         opts.append(("radius_km", {"radius_km": None}, "کل تهران"))
     return opts
+
+
+def km_label(km: float) -> str:
+    """0.4 → «۴۰۰ متر», 2 → «۲ کیلومتر», 2.5 → «۲٫۵ کیلومتر»."""
+    if km < 1:
+        return f"{to_fa_digits(round(km * 1000))} متر"
+    text = f"{km:.1f}".rstrip("0").rstrip(".")
+    return to_fa_digits(text).replace(".", "٫") + " کیلومتر"
 
 
 def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
@@ -278,7 +300,12 @@ def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
     notes: list[str] = []
     relaxed = None
     passing = [o for o in offers if _passes(o, cond, now)]
-    closed_at_arrival = sum(1 for o in offers if o.open_state == "no" and (not cond.radius_km or o.meters <= cond.radius_km * 1000))
+    # R4 funnel that adds up: registered nearby → didn't match the terms → closed when you'd arrive → shown.
+    nearby = [o for o in offers if _in_radius(o, cond)]
+    terms_ok = [o for o in nearby if _passes_terms(o, cond)]
+    counts = {"found": len(nearby), "found_tehran": len(offers), "terms_mismatch": len(nearby) - len(terms_ok),
+              "closed_at_arrival": sum(1 for o in terms_ok if not _passes_open(o, cond, now)),
+              "suspicious_hidden": len(suspicious_only)}
     if not passing:
         for fld, patch, label in _relax_options(cond):
             trial = cond.model_copy(update=patch)
@@ -296,12 +323,12 @@ def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
     open_rank = {"yes": 0, "tight": 0, "unknown": 1, "no": 2}
     passing.sort(key=lambda o: (open_rank[o.open_state], -o.score, o.meters))
     top, more = passing[:TOP_N], passing[TOP_N:]
-    _badges(top)
+    _badges(passing, top)
     if not product_has_hours(top) and top:
         notes.append("ساعت کاری این فروشگاه‌ها ثبت نشده؛ قبل از رفتن بپرس.")
-    cat_only = category_only(product, cond, {o.shop["shop_id"] for o in offers})
-    counts = {"found": len(offers), "passing": len(passing), "closed_at_arrival": closed_at_arrival,
-              "suspicious_hidden": suspicious_only}
+    # Shops that registered it with a junk price are still sellers: never list them as «ثبت نکرده».
+    cat_only = category_only(product, cond, {o.shop["shop_id"] for o in offers} | suspicious_only)
+    counts["passing"] = len(passing)
     return ShopsResult(product, top, more, cat_only, counts, notes, relaxed)
 
 
@@ -365,7 +392,7 @@ def card(o: ShopOffer, product: dict, cond: Conditions, now: datetime) -> dict:
     s = o.shop
     reasons = [BADGE_LABELS[b] for b in o.badges if b in BADGE_LABELS][:2]
     if o.same_building_others:
-        reasons.append(f"{to_fa_digits(o.same_building_others)} فروشنده‌ی دیگه تو همین پاساژ")
+        reasons.append(f"{to_fa_digits(o.same_building_others)} فروشنده‌ی دیگه تو همین پاساژ هم ثبت کرده‌اند")
     call = Chip(label="زنگ بزن بپرس", kind="direct_call", tool="call_shop",
                 args={"shop_id": s["shop_id"], "product_id": product["product_id"]})
     return {

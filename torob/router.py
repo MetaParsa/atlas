@@ -88,7 +88,7 @@ def _parse_arrive_at(v) -> datetime | None:
     if isinstance(v, str) and (m := _HHMM.match(to_latin_digits(v.strip()))):
         h, mi = int(m.group(1)), int(m.group(2))
         if h < 24 and mi < 60:
-            return datetime.now(TEHRAN).replace(hour=h, minute=mi, second=0, microsecond=0)
+            return clock.now().replace(hour=h, minute=mi, second=0, microsecond=0)   # demo clock, not the real date
     return None
 
 
@@ -195,7 +195,7 @@ def _chip_set_conditions(state: SessionState, em: Emitter, args: SetConditionsAr
     changed: list[str] = []
     for k in args.model_fields_set:
         v = getattr(args, k)
-        if v is None and k in ("radius_km", "budget_max"):
+        if v is None and k in ("radius_km", "budget_max", "arrive_at"):   # «کل تهران» / «فرقی نداره» / «الان»
             if getattr(state.conditions, k) is not None:
                 state.conditions = state.conditions.model_copy(update={k: None})
                 if k == "budget_max" and state.need:
@@ -216,7 +216,7 @@ class CallShopArgs(DirectTool):
 @direct("call_shop", CallShopArgs)
 def _chip_call_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iterator[str]:
     """S6 runs the simulated call; only shops this session was shown, for the selected product."""
-    if args.shop_id not in state.shop_ids or args.product_id != state.selected_product_id:
+    if args.shop_id not in state.call_ok_ids or args.product_id != state.selected_product_id:
         yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
         return
     yield em.emit("call_start", {"call_id": "pending", "shop_id": args.shop_id, "pending": "S6"})
@@ -286,10 +286,14 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
     now = clock.now()
     cards = [shops_agent.card(o, res.product, state.conditions, now) for o in res.items]
     more = [shops_agent.card(o, res.product, state.conditions, now) for o in res.more[:20]]
-    state.shop_ids = [c["shop_id"] for c in cards + more] + [s["shop_id"] for s in res.category_only]
+    state.call_ok_ids = [c["shop_id"] for c in cards + more]   # shown as having it (S6 calls only these)
+    state.shop_ids = state.call_ok_ids + [s["shop_id"] for s in res.category_only]
     state.last_block_kind = "shops"
     c = res.counts
-    steps = [f"{to_fa_digits(c['found'])} فروشنده ثبت کرده‌اند"]
+    where = "نزدیکت" if state.conditions.radius_km else "در تهران"
+    steps = [f"{to_fa_digits(c['found'])} فروشنده {where} ثبت کرده‌اند"]
+    if c["terms_mismatch"]:
+        steps.append(f"{to_fa_digits(c['terms_mismatch'])} تا با شرط‌هات جور نبود")
     if c["closed_at_arrival"]:
         steps.append(f"{to_fa_digits(c['closed_at_arrival'])} تا موقع رسیدن بسته‌ان")
     if c["suspicious_hidden"]:

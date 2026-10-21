@@ -39,7 +39,7 @@ def test_top_three_honest_rows(charger):
     t = time.perf_counter()
     res = S.find_shops(charger, Conditions())
     assert time.perf_counter() - t < 0.3
-    assert 1 <= len(res.items) <= 3 and res.counts["found"] == 53 and res.counts["suspicious_hidden"] >= 1
+    assert 1 <= len(res.items) <= 3 and res.counts["found_tehran"] == 53 and res.counts["found"] == 51 and res.counts["suspicious_hidden"] >= 1
     for c in cards(res):
         assert c["stock_label"] == "موجودی: تأیید نشده" and c["stock"] == "listed"     # data never confirms stock
         assert c["price"]["text"].startswith(("قیمت ثبت‌شده", "قیمت ثبت نشده")) and c["price"]["age"]
@@ -139,7 +139,7 @@ def test_router_show_shops_then_refine_then_call_guard():
     block = dict(events)["shop_cards"]
     assert fake.calls == [] and block["items"] and block["disclaimer"] and block["demo_time"] == "18:05"
     status = [d["text"] for e, d in events if e == "status" and d.get("done")][0]
-    assert "فروشنده ثبت کرده‌اند" in status
+    assert "ثبت کرده‌اند" in status and "نزدیکت" in status
     events, _ = turn(s, chip=Chip(label="x", kind="direct_call", tool="set_conditions", args={"payment": "credit"}))
     assert s.conditions.payment == "credit" and "shop_cards" in [e for e, _ in events]
     events, _ = turn(s, chip=Chip(label="x", kind="direct_call", tool="set_conditions", args={"payment": "free"}))

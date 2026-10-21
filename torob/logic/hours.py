@@ -40,11 +40,17 @@ def parse_weekly_hours(raw: str | dict | None) -> dict[int, DayHours]:
         shifts = []
         for s in day.get("shifts") or []:
             start, end = time.fromisoformat(s["start_time"]), time.fromisoformat(s["end_time"])
-            if start == ZERO and end == ZERO:
-                continue  # padding the export adds after real shifts
-            shifts.append((start, end))
+            if _placeholder(start, end):
+                continue  # 00:00–00:00 padding, or a 00:00:00–00:00:01 «shift» (58 shops' Fridays)
+            shifts.append((start.replace(second=0, microsecond=0), end.replace(second=0, microsecond=0)))
         week[i] = DayHours("declared", _merge(shifts)) if status == "declared" and shifts else DayHours("unknown")
     return week
+
+
+def _placeholder(start: time, end: time) -> bool:
+    """A non-overnight shift shorter than 5 minutes is not real opening time (and must never become 24 h open)."""
+    s, e = start.hour * 3600 + start.minute * 60 + start.second, end.hour * 3600 + end.minute * 60 + end.second
+    return s == e or (e > s and e - s < 300) or (start == ZERO and end.hour == 0 and end.minute < 5)
 
 
 def _merge(shifts: list[tuple[time, time]]) -> list[tuple[time, time]]:
@@ -82,8 +88,13 @@ def to_json(week: dict[int, DayHours]) -> str:
 
 def from_json(raw: str) -> dict[int, DayHours]:
     data = json.loads(raw)
-    return {int(i): DayHours(d["status"], [(time.fromisoformat(a), time.fromisoformat(b)) for a, b in d["shifts"]])
-            for i, d in data.items()}
+    week = {}
+    for i, d in data.items():
+        shifts = [(time.fromisoformat(a), time.fromisoformat(b)) for a, b in d["shifts"]]
+        shifts = [(a, b) for a, b in shifts if not _placeholder(a, b)]   # defensive: an old DB must not mean 24 h open
+        status = d["status"] if (shifts or d["status"] != "declared") else "unknown"
+        week[int(i)] = DayHours(status, shifts)
+    return week
 
 
 def _shift_bounds(day: date, start: time, end: time) -> tuple[datetime, datetime]:

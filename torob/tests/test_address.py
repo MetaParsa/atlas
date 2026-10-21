@@ -58,14 +58,14 @@ def test_building_key_merges_spellings():
     assert building_key("علاالدین 2") != building_key("علاالدین")
 
 
-def test_building_groups_need_same_area_and_distance():
+def test_building_groups_need_distance_not_area():
     from torob.etl.build_db import building_groups
     shops = [
         {"shop_id": "a", "building_key": "نور", "area": "فردوسی", "lat": 35.6930, "lon": 51.4200},
         {"shop_id": "b", "building_key": "نور", "area": "فردوسی", "lat": 35.6935, "lon": 51.4205},   # ~70 m
         {"shop_id": "c", "building_key": "نور", "area": "فردوسی", "lat": 35.7400, "lon": 51.4200},   # ~5 km
-        {"shop_id": "d", "building_key": "نور", "area": "تجریش", "lat": 35.6931, "lon": 51.4201},    # other area
+        {"shop_id": "d", "building_key": "نور", "area": "شیخ هادی", "lat": 35.6931, "lon": 51.4201}, # other label, same spot
     ]
     g = building_groups(shops)
-    assert g["a"] == g["b"]
-    assert len({g["a"], g["c"], g["d"]}) == 3
+    assert g["a"] == g["b"] == g["d"]
+    assert g["a"] != g["c"]

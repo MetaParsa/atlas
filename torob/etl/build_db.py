@@ -94,23 +94,31 @@ def flag_offers(con: duckdb.DuckDBPyConnection, workdir: Path) -> None:
     path.unlink()
 
 
-def building_groups(shops: list[dict], radius_m: float = 200) -> dict[str, str]:
-    """shop_id -> building group id. Same spelling key AND same area AND within `radius_m` of the group's first shop:
-    the lossy key alone merges unrelated buildings (e.g. «نور» in 4 areas, 11 km apart)."""
-    groups: dict[tuple, list[tuple[float, float, str]]] = {}
+def building_groups(shops: list[dict], radius_m: float = 350) -> dict[str, str]:
+    """shop_id -> building group id: same spelling key AND within `radius_m` of the group's running centre.
+    The lossy key alone merges unrelated buildings (e.g. «نور» in 4 areas, 11 km apart), so distance is required;
+    the neighbourhood label is not (Aladdin straddles «فردوسی» and «شیخ هادی»), and shop coordinates are approximate
+    (the main Aladdin group spreads ~450 m), so the radius is measured from the centre, not the first shop."""
+    groups: dict[str, list[list]] = {}   # key -> [[sum_lat, sum_lon, n, gid], ...]
     out: dict[str, str] = {}
     for s in shops:
         if not s["building_key"] or s["lat"] is None:
             continue
-        anchors = groups.setdefault((s["building_key"], s["area"]), [])
-        for lat, lon, gid in anchors:
-            if haversine_m(lat, lon, s["lat"], s["lon"]) <= radius_m:
-                out[s["shop_id"]] = gid
-                break
+        clusters = groups.setdefault(s["building_key"], [])
+        best = None
+        for cl in clusters:
+            d = haversine_m(cl[0] / cl[2], cl[1] / cl[2], s["lat"], s["lon"])
+            if d <= radius_m and (best is None or d < best[0]):
+                best = (d, cl)
+        if best is None:
+            cl = [0.0, 0.0, 0, f"{s['building_key']}|{len(clusters)}"]
+            clusters.append(cl)
         else:
-            gid = f"{s['building_key']}|{s['area']}|{len(anchors)}"
-            anchors.append((s["lat"], s["lon"], gid))
-            out[s["shop_id"]] = gid
+            cl = best[1]
+        cl[0] += s["lat"]
+        cl[1] += s["lon"]
+        cl[2] += 1
+        out[s["shop_id"]] = cl[3]
     return out
 
 
