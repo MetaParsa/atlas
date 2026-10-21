@@ -7,7 +7,6 @@ Run locally, then upload the file to the host disk (spec §0.2 R12):
 import argparse
 import csv
 import json
-import math
 import os
 import sqlite3
 import time
@@ -18,6 +17,7 @@ import duckdb
 from core.text import normalize_fa
 from torob.etl.address import parse_address
 from torob.logic import hours as hours_mod
+from torob.logic.geo import haversine_m
 from torob.logic.price import flag_price, is_per_metre, warranty_text
 
 DATASET_VERSION = "v16"
@@ -113,13 +113,6 @@ def building_groups(shops: list[dict], radius_m: float = 200) -> dict[str, str]:
             out[s["shop_id"]] = gid
     return out
 
-
-def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    r = 6_371_000
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = p2 - p1, math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
 
 
 def build(csv_dir: Path, out: Path) -> dict:

@@ -95,8 +95,8 @@ def test_router_history_has_no_duplicate_and_remembers_assistant():
 def test_direct_call_rejects_unknown_args():
     llm = LLMClient([], MODELS, enabled=False, fake=FakeLLM(lambda r, m: {"intent": "other"}))
     em = Emitter("s")
-    list(run_turn(llm, SessionState(), em, chip=Chip(label="x", kind="direct_call", tool="show_products",
-                                                    args={"query": "x", "shop_id": "evil"})))
+    list(run_turn(llm, SessionState(), em, chip=Chip(label="x", kind="direct_call", tool="set_budget",
+                                                    args={"budget_max": 1000000, "shop_id": "evil"})))
     assert [e for e, _ in em.events] == ["error", "done"]
 
 

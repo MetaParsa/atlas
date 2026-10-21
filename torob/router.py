@@ -10,12 +10,13 @@ from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from core.agent_loop import Emitter
 from core.llm import LLMClient
 from core.text import TEHRAN, format_million, normalize_fa, to_fa_digits, to_latin_digits
 from torob import store
+from torob.agents import advisor
 from torob.models import Chip, Conditions, Need, RouterOutput, SessionState
 
 ROUTER_PROMPT = (Path(__file__).parent / "prompts" / "router.md").read_text(encoding="utf-8")
@@ -138,29 +139,84 @@ def direct(name: str, args_model: type[DirectTool]):
     return deco
 
 
-class ShowProductsArgs(DirectTool):
-    query: str = ""
+class SetBudgetArgs(DirectTool):
+    budget_max: int | None = Field(None, gt=0, le=100_000_000_000)
 
 
-@direct("show_products", ShowProductsArgs)
-def _chip_show_products(state: SessionState, em: Emitter, args: ShowProductsArgs) -> Iterator[str]:
-    yield from show_products(state, em, args.query[:200])
+class PreferBrandArgs(DirectTool):
+    brand: str | None = Field(None, max_length=40)
 
 
-# --- handlers (S1 skeleton; S2–S6 replace the bodies) ---------------------------------------------------------
+class ShowShopsArgs(DirectTool):
+    product_id: str = Field(max_length=64)
 
-def show_products(state: SessionState, em: Emitter, query: str) -> Iterator[str]:
-    """S1 stub: plain FTS search so the flow is testable end to end. S2 swaps in the advisor (roles, seller floor)."""
+
+@direct("set_budget", SetBudgetArgs)
+def _chip_set_budget(state: SessionState, em: Emitter, args: SetBudgetArgs) -> Iterator[str]:
+    if apply_patch(state, {"budget_max": args.budget_max}) or args.budget_max is None:
+        state.conditions = state.conditions.model_copy(update={"budget_max": args.budget_max})
+        yield em.emit("conditions", conditions_event(state))
+    if state.need:
+        yield from show_products(state, em)
+
+
+@direct("prefer_brand", PreferBrandArgs)
+def _chip_prefer_brand(state: SessionState, em: Emitter, args: PreferBrandArgs) -> Iterator[str]:
+    if state.need:
+        state.need = state.need.model_copy(update={"brand_pref": [args.brand] if args.brand else []})
+        if args.brand:
+            state.need.keywords = [f"{k} {args.brand}" for k in state.need.keywords] or [args.brand]
+        yield from show_products(state, em, ask=False)
+
+
+@direct("show_shops", ShowShopsArgs)
+def _chip_show_shops(state: SessionState, em: Emitter, args: ShowShopsArgs) -> Iterator[str]:
+    if args.product_id not in state.product_ids:   # only products this session was actually shown
+        yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
+        return
+    state.selected_product_id = args.product_id
+    yield from show_shops(state, em)
+
+
+# --- handlers -------------------------------------------------------------------------------------------------
+
+def _card_with_button(card: dict) -> dict:
+    btn = Chip(label="فروشنده‌ها", kind="direct_call", tool="show_shops", args={"product_id": card["product_id"]})
+    return {**card, "button": btn.model_dump()}
+
+
+def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterator[str]:
+    """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
     yield em.emit("status", {"text": "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
-    rows = store.search_products(store.get(), query, limit=3)
-    state.product_ids = [r["product_id"] for r in rows]
+    res = advisor.pick_products(state.need, state.conditions)
+    if res.named:
+        card = res.named.card()
+        state.product_ids, state.selected_product_id, state.last_block_kind = [card["product_id"]], card["product_id"], "products"
+        yield em.emit("status", {"text": f"همین مدل رو پیدا کردم · {to_fa_digits(res.named.area.sellers)} فروشنده نزدیکت", "done": True})
+        yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(card)],
+                                        "compare_rows": [], "notes": res.notes})
+        yield from show_shops(state, em)   # R7: a named model skips straight to its sellers
+        return
+    cards = [p.card() for p in res.picks]
+    state.product_ids = [c["product_id"] for c in cards]
     state.last_block_kind = "products"
-    yield em.emit("status", {"text": f"{to_fa_digits(len(rows))} مدل پیدا شد", "done": True})
-    yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [
-        {"product_id": r["product_id"], "title": r["title"], "sellers_total": r["sellers_total"],
-         "price_min": r["price_min"], "price_max": r["price_max"]} for r in rows]})
-    if not rows:
-        yield say(state, em, "توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم. یه جور دیگه بگو؟")
+    status = (f"{to_fa_digits(res.n_candidates)} مدل پیدا شد → {to_fa_digits(res.n_nearby)} تا نزدیکت فروشنده دارن"
+              f" → {to_fa_digits(len(cards))} تا رو مقایسه کردم") if cards else "چیزی پیدا نشد"
+    yield em.emit("status", {"text": status, "done": True})
+    yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(c) for c in cards],
+                                    "compare_rows": res.compare_rows, "notes": res.notes})
+    if not cards:
+        yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
+    elif ask and res.question:
+        state.remember("assistant", res.question["text"])
+        yield em.emit("question", res.question)
+
+
+def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
+    """Steps 2–3 arrive in S3 (find_shops: ranking, hours, travel, badges, category-only shops)."""
+    state.last_block_kind = "shops"
+    yield em.emit("shop_cards", {"block_id": "shops", "replace": True, "product_id": state.selected_product_id,
+                                 "items": [], "pending": "S3"})
 
 
 def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, chip: Chip | None) -> Iterator[str]:
@@ -192,8 +248,7 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         state.need = out.need
         if out.message:
             yield say(state, em, out.message)
-        query = out.need.named_product or " ".join(out.need.keywords) or out.need.product_type
-        yield from show_products(state, em, query)
+        yield from show_products(state, em)
     elif out.intent == "refine":
         yield say(state, em, out.message or "شرایط رو عوض کردم.")
     else:
