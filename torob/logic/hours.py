@@ -43,8 +43,30 @@ def parse_weekly_hours(raw: str | dict | None) -> dict[int, DayHours]:
             if start == ZERO and end == ZERO:
                 continue  # padding the export adds after real shifts
             shifts.append((start, end))
-        week[i] = DayHours("declared", shifts) if status == "declared" and shifts else DayHours("unknown")
+        week[i] = DayHours("declared", _merge(shifts)) if status == "declared" and shifts else DayHours("unknown")
     return week
+
+
+def _merge(shifts: list[tuple[time, time]]) -> list[tuple[time, time]]:
+    """Merge overlapping or back-to-back shifts (09–14 + 14–20 = 09–20) so «closes at» is the real closing time.
+    A shift ending at 00:00 (midnight) or past midnight is kept as the day's last shift."""
+    def end_key(e: time, s: time) -> tuple[int, int]:
+        return (1, 0) if e <= s else (0, e.hour * 60 + e.minute)
+
+    merged: list[tuple[time, time]] = []
+    for s, e in sorted(shifts):
+        if merged:
+            ps, pe = merged[-1]
+            if end_key(pe, ps)[0] == 0 and s <= pe:          # overlaps or touches the previous shift
+                merged[-1] = (ps, e if end_key(e, s) > end_key(pe, ps) else pe)
+                continue
+        merged.append((s, e))
+    return merged
+
+
+def as_tehran(dt: datetime) -> datetime:
+    """Naive datetimes (e.g. a DEMO_NOW typed without a zone) are Tehran time, never server-local time."""
+    return dt.replace(tzinfo=TEHRAN) if dt.tzinfo is None else dt.astimezone(TEHRAN)
 
 
 def hours_known(week: dict[int, DayHours]) -> bool:
@@ -74,22 +96,20 @@ def _shift_bounds(day: date, start: time, end: time) -> tuple[datetime, datetime
 
 def status_at(week: dict[int, DayHours], when: datetime) -> tuple[str, datetime | None]:
     """('open', closes_at) | ('closed', None) | ('unknown', None) at a Tehran datetime."""
-    when = when.astimezone(TEHRAN)
-    for offset in (0, -1):  # yesterday's overnight shift may still be running
+    when = as_tehran(when)
+    today = week.get(iran_weekday(when.date()), DayHours("unknown"))
+    for offset in (-1, 0):  # yesterday's overnight shift may still be running, even if today is unknown
         day = when.date() + timedelta(days=offset)
-        dh = week.get(iran_weekday(day), DayHours("unknown"))
-        if offset == 0 and dh.status == "unknown":
-            return "unknown", None
-        for start, end in dh.shifts:
+        for start, end in week.get(iran_weekday(day), DayHours("unknown")).shifts:
             opens, closes = _shift_bounds(day, start, end)
             if opens <= when < closes:
                 return "open", closes
-    return "closed", None
+    return ("unknown", None) if today.status == "unknown" else ("closed", None)
 
 
 def next_open(week: dict[int, DayHours], when: datetime, horizon_days: int = 7) -> datetime | None:
     """Earliest opening strictly after `when`; None if it can't be known."""
-    when = when.astimezone(TEHRAN)
+    when = as_tehran(when)
     for offset in range(horizon_days + 1):
         day = when.date() + timedelta(days=offset)
         dh = week.get(iran_weekday(day), DayHours("unknown"))
@@ -109,5 +129,5 @@ def open_at_arrival(week: dict[int, DayHours], arrival: datetime, buffer_min: in
         return "unknown", None
     if state == "closed":
         return "no", None
-    slack = (closes - arrival.astimezone(TEHRAN)).total_seconds() / 60
+    slack = (closes - as_tehran(arrival)).total_seconds() / 60
     return ("yes" if slack >= buffer_min else "tight"), closes

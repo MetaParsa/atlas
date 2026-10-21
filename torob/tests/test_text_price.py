@@ -27,6 +27,29 @@ def test_price_age_labels():
     assert price_age_label(None, now) == ("تاریخ ثبت نشده", True)
 
 
+def test_price_age_from_dataset_iso_string():
+    now = datetime(2026, 10, 14, 12, 0)   # naive = Tehran
+    assert price_age_label("2026-09-14T08:57:27.401253+00:00", now) == ("۴ هفته پیش", False)
+    assert price_age_label("", now)[0] == "تاریخ ثبت نشده"
+
+
+def test_single_seller_extremes_only():
+    assert flag_price(3_000, None, 1, category_median=25_000_000) == "suspicious_low"    # inverter at 3,000 toman
+    assert flag_price(3_000, None, 1, category_median=40_000) == "ok"                    # a cheap part
+    assert flag_price(1_400_000_000, None, 1, category_median=300_000_000) == "ok"       # a real generator
+    assert flag_price(2_000_000_000, None, 1, category_median=500_000) == "suspicious_high"
+
+
+def test_per_metre_only_when_explicit():
+    from torob.logic.price import is_per_metre
+    assert is_per_metre("سیم مسی لخت - سایزهای 16 تا 300 - (سایز 70 قیمت متری)")
+    assert is_per_metre("کابل افشان ۲.۵ قیمت هر متر")
+    assert not is_per_metre("کابل افشان 6*2 لینکو صدمتری")
+    assert not is_per_metre("کابل شارژ ۱.۸ متری")
+    assert not is_per_metre("جک ۳.۵ میلی‌متری")
+    assert not is_per_metre("پمپ کف کش ۲۸ متری")
+
+
 def test_flag_price_rules():
     assert flag_price(None, 1e6, 5) == "missing"
     assert flag_price(500, None, 1) == "suspicious_low"

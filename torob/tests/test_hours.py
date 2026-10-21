@@ -49,6 +49,27 @@ def test_unknown_is_never_guessed():
     assert next_open(week, THU) is None
 
 
+def test_back_to_back_and_overlapping_shifts_merge():
+    raw = json.dumps({"thu": {"status": "declared", "shifts": [
+        {"start_time": "09:00:00", "end_time": "14:00:00"}, {"start_time": "14:00:00", "end_time": "20:00:00"}]}})
+    week = parse_weekly_hours(raw)
+    assert week[5].shifts == [(datetime(1, 1, 1, 9).time(), datetime(1, 1, 1, 20).time())]
+    assert open_at_arrival(week, THU.replace(hour=13, minute=50))[0] == "yes"   # not «tight»: it stays open
+
+
+def test_naive_datetime_is_tehran_time():
+    week = parse_weekly_hours(week_json())
+    assert status_at(week, datetime(2026, 10, 22, 12, 0))[0] == "open"           # naive noon Thursday in Tehran
+    assert status_at(week, datetime(2026, 10, 22, 13, 0, tzinfo=TEHRAN).astimezone(__import__("datetime").timezone.utc))[0] == "open"
+
+
+def test_yesterdays_overnight_shift_when_today_unknown():
+    raw = json.dumps({"thu": {"status": "declared", "shifts": [{"start_time": "18:00:00", "end_time": "02:00:00"}]}})
+    week = parse_weekly_hours(raw)   # Friday unknown
+    assert status_at(week, datetime(2026, 10, 23, 1, 0, tzinfo=TEHRAN))[0] == "open"
+    assert status_at(week, datetime(2026, 10, 23, 12, 0, tzinfo=TEHRAN))[0] == "unknown"
+
+
 def test_shift_ending_at_midnight():
     week = parse_weekly_hours(week_json(thu=("18:00:00", "00:00:00")))
     state, closes = status_at(week, THU.replace(hour=23, minute=30))

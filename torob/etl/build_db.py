@@ -5,7 +5,9 @@ Run locally, then upload the file to the host disk (spec §0.2 R12):
 """
 
 import argparse
+import csv
 import json
+import math
 import os
 import sqlite3
 import time
@@ -16,19 +18,21 @@ import duckdb
 from core.text import normalize_fa
 from torob.etl.address import parse_address
 from torob.logic import hours as hours_mod
-from torob.logic.price import MAX_SANE, MIN_OFFERS_FOR_PRODUCT_RULE, MIN_SANE, PRODUCT_RATIO, warranty_text
+from torob.logic.price import flag_price, is_per_metre, warranty_text
 
 DATASET_VERSION = "v16"
 EXPORTED_AT = "2026-10-14T00:00:00+03:30"   # zip file dates; newest price change is 2026-10-13
 EXPECTED = {"shops": 6476, "products": 225903, "offers": 331506}
 BNPL_PROVIDERS = {"ترب‌پی", "اسنپ‌پی", "دیجی پی", "تارا", "ازکی‌وام"}
 BNPL_NORM = {normalize_fa(p) for p in BNPL_PROVIDERS}
+# 849 products carry this placeholder instead of a title; they are kept but never searchable or shown.
+REDACTED_TITLE = normalize_fa("عنوان حذف‌شده برای انتشار")
 
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE shops(
   shop_id TEXT PRIMARY KEY, name TEXT, name_is_real INTEGER, address TEXT,
-  building_kind TEXT, building TEXT, building_key TEXT, floor TEXT, unit TEXT, plaque TEXT,
+  building_kind TEXT, building TEXT, building_key TEXT, building_gid TEXT, floor TEXT, unit TEXT, plaque TEXT,
   area TEXT, lat REAL, lon REAL, categories TEXT, hours TEXT, hours_known INTEGER,
   fast_delivery INTEGER, instagram TEXT, website TEXT, offer_count INTEGER, has_credit INTEGER);
 CREATE TABLE shop_payments(
@@ -37,7 +41,7 @@ CREATE TABLE products(
   rid INTEGER PRIMARY KEY, product_id TEXT UNIQUE, title TEXT, title_norm TEXT, brand TEXT, brand_norm TEXT,
   category TEXT, category_norm TEXT, model TEXT, specs TEXT, spec_count INTEGER, image TEXT,
   sellers_total INTEGER, ok_offers INTEGER, price_min INTEGER, price_median INTEGER, price_max INTEGER,
-  fresh_offers_30d INTEGER);
+  fresh_offers_30d INTEGER, redacted INTEGER);
 CREATE TABLE offers(
   offer_id TEXT PRIMARY KEY, shop_id TEXT, product_id TEXT, seller_title TEXT, description TEXT,
   price_toman INTEGER, price_changed_at TEXT, warranty TEXT, price_flag TEXT, per_metre INTEGER);
@@ -54,7 +58,7 @@ CREATE INDEX offers_product ON offers(product_id);
 CREATE INDEX offers_shop ON offers(shop_id);
 CREATE INDEX shops_area ON shops(area);
 CREATE INDEX shops_latlon ON shops(lat, lon);
-CREATE INDEX shops_building ON shops(building_key);
+CREATE INDEX shops_building ON shops(building_gid);
 CREATE INDEX payments_shop ON shop_payments(shop_id);
 CREATE INDEX products_category ON products(category);
 """
@@ -73,28 +77,56 @@ def load(con: duckdb.DuckDBPyConnection, csv_dir: Path) -> None:
         assert got == n, f"{name}: expected {n} rows, got {got}"
 
 
-def flag_offers(con: duckdb.DuckDBPyConnection) -> None:
-    """Price flags in SQL (same rules as torob.logic.price.flag_price, which the tests cover)."""
-    con.execute(f"""
-    CREATE TABLE offer_flags AS
-    WITH pm AS (SELECT product_id, median(price_toman) med, count(price_toman) n FROM offers GROUP BY 1)
-    SELECT o.offer_id,
-      CASE
-        WHEN o.price_toman IS NULL THEN 'missing'
-        WHEN o.price_toman < {MIN_SANE} THEN 'suspicious_low'
-        WHEN o.price_toman > {MAX_SANE} THEN 'suspicious_high'
-        WHEN pm.n >= {MIN_OFFERS_FOR_PRODUCT_RULE} AND o.price_toman > {PRODUCT_RATIO} * pm.med THEN 'suspicious_high'
-        WHEN pm.n >= {MIN_OFFERS_FOR_PRODUCT_RULE} AND o.price_toman < pm.med / {PRODUCT_RATIO} THEN 'suspicious_low'
-        ELSE 'ok' END AS price_flag
-    FROM offers o JOIN pm USING (product_id)
-    """)
+def flag_offers(con: duckdb.DuckDBPyConnection, workdir: Path) -> None:
+    """Price flags via torob.logic.price.flag_price (the one tested implementation), loaded back into DuckDB."""
+    rows = con.execute("""
+      WITH pm AS (SELECT product_id, median(price_toman) med, count(price_toman) n FROM offers GROUP BY 1),
+           cm AS (SELECT p.category_name cat, median(o.price_toman) med FROM offers o JOIN products p USING (product_id) GROUP BY 1)
+      SELECT o.offer_id, o.price_toman, pm.med, pm.n, cm.med
+      FROM offers o JOIN products p USING (product_id) JOIN pm USING (product_id) LEFT JOIN cm ON cm.cat = p.category_name
+    """).fetchall()
+    path = workdir / "offer_flags.csv"
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["offer_id", "price_flag"])
+        w.writerows((oid, flag_price(price, pmed, n, cmed)) for oid, price, pmed, n, cmed in rows)
+    con.execute(f"CREATE TABLE offer_flags AS SELECT * FROM read_csv('{path.as_posix()}', header=true)")
+    path.unlink()
+
+
+def building_groups(shops: list[dict], radius_m: float = 200) -> dict[str, str]:
+    """shop_id -> building group id. Same spelling key AND same area AND within `radius_m` of the group's first shop:
+    the lossy key alone merges unrelated buildings (e.g. «نور» in 4 areas, 11 km apart)."""
+    groups: dict[tuple, list[tuple[float, float, str]]] = {}
+    out: dict[str, str] = {}
+    for s in shops:
+        if not s["building_key"] or s["lat"] is None:
+            continue
+        anchors = groups.setdefault((s["building_key"], s["area"]), [])
+        for lat, lon, gid in anchors:
+            if haversine_m(lat, lon, s["lat"], s["lon"]) <= radius_m:
+                out[s["shop_id"]] = gid
+                break
+        else:
+            gid = f"{s['building_key']}|{s['area']}|{len(anchors)}"
+            anchors.append((s["lat"], s["lon"], gid))
+            out[s["shop_id"]] = gid
+    return out
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6_371_000
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
 
 
 def build(csv_dir: Path, out: Path) -> dict:
     t0 = time.perf_counter()
     con = duckdb.connect()
     load(con, csv_dir)
-    flag_offers(con)
+    flag_offers(con, out.parent)
 
     tmp = out.with_suffix(".building")
     tmp.unlink(missing_ok=True)
@@ -104,10 +136,10 @@ def build(csv_dir: Path, out: Path) -> dict:
     # Offers
     rows = con.execute("""
       SELECT o.offer_id, o.shop_id, o.product_id, o.seller_title, nullif(trim(o.description), ''), o.price_toman,
-             o.last_price_changed_at, o.warranty, f.price_flag, (o.seller_title LIKE '%متری%')::INT
+             o.last_price_changed_at, o.warranty, f.price_flag
       FROM offers o JOIN offer_flags f USING (offer_id)""").fetchall()
     db.executemany("INSERT INTO offers VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   [(*r[:7], warranty_text(r[7]), r[8], r[9]) for r in rows])
+                   [(*r[:7], warranty_text(r[7]), r[8], int(is_per_metre(r[3]))) for r in rows])
 
     # Products (+ stats from sane offers only)
     rows = con.execute(f"""
@@ -126,14 +158,18 @@ def build(csv_dir: Path, out: Path) -> dict:
       FROM products p JOIN s USING (product_id)""").fetchall()
     db.executemany(
         "INSERT INTO products(product_id,title,title_norm,brand,brand_norm,category,category_norm,model,specs,"
-        "spec_count,image,sellers_total,ok_offers,price_min,price_median,price_max,fresh_offers_30d) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [(r[0], r[1], normalize_fa(r[1]), r[2], normalize_fa(r[2]), r[3], normalize_fa(r[3]), *r[4:]) for r in rows])
+        "spec_count,image,sellers_total,ok_offers,price_min,price_median,price_max,fresh_offers_30d,redacted) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [(r[0], r[1], normalize_fa(r[1]), r[2], normalize_fa(r[2]), r[3], normalize_fa(r[3]), *r[4:],
+          int(normalize_fa(r[1]) == REDACTED_TITLE)) for r in rows])
 
     # Shops
     offer_counts = dict(con.execute("SELECT shop_id, count(*) FROM offers GROUP BY 1").fetchall())
     rows = con.execute("""SELECT shop_id, name, address, location_label, lat, lon, category_names, weekly_hours,
                                  supports_fast_delivery, instagram, website_url, payment_options FROM shops""").fetchall()
+    gids = building_groups([
+        {"shop_id": sid, "building_key": parse_address(address).building_key, "area": area, "lat": lat, "lon": lon}
+        for (sid, name, address, area, lat, lon, *_rest) in rows])
     shops, payments = [], []
     for (sid, name, address, area, lat, lon, cats, weekly, fast, insta, site, pay) in rows:
         a = parse_address(address)
@@ -149,10 +185,10 @@ def build(csv_dir: Path, out: Path) -> dict:
                              p.get("min_price_toman") or None, p.get("max_price_toman") or None))
         insta_url = json.loads(insta).get("profile_url") if insta else None
         shops.append((sid, name, int(bool(insta or site)), address, a.building_kind, a.building, a.building_key,
-                      a.floor, a.unit, a.plaque, area or None, lat, lon, cats, hours_mod.to_json(week),
+                      gids.get(sid), a.floor, a.unit, a.plaque, area or None, lat, lon, cats, hours_mod.to_json(week),
                       int(hours_mod.hours_known(week)), None if fast is None else int(fast), insta_url, site,
                       offer_counts.get(sid, 0), has_credit))
-    db.executemany("INSERT INTO shops VALUES (" + ",".join("?" * 21) + ")", shops)
+    db.executemany("INSERT INTO shops VALUES (" + ",".join("?" * 22) + ")", shops)
     db.executemany("INSERT INTO shop_payments VALUES (?,?,?,?,?,?,?)", payments)
 
     # Categories (used by the advisor's category lookup) and areas

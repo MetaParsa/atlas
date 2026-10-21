@@ -3,7 +3,6 @@
 import math
 import os
 import sqlite3
-from functools import lru_cache
 from pathlib import Path
 
 from core.text import normalize_fa
@@ -11,9 +10,18 @@ from core.text import normalize_fa
 DB_PATH = Path(os.environ.get("TOROB_DB", "data/torob.db"))
 
 
-@lru_cache(maxsize=1)
 def _uri() -> str:
-    return f"file:{DB_PATH.resolve().as_posix()}?mode=ro&immutable=1"
+    # mode=ro (not immutable): SQLite still notices if the file is replaced by a new upload.
+    return f"file:{DB_PATH.resolve().as_posix()}?mode=ro"
+
+
+def file_signature() -> tuple[int, int] | None:
+    """(size, mtime) of the DB file, used to reopen after an upload; None if it isn't there yet."""
+    try:
+        st = DB_PATH.stat()
+        return st.st_size, st.st_mtime_ns
+    except FileNotFoundError:
+        return None
 
 
 def connect() -> sqlite3.Connection:
@@ -48,7 +56,7 @@ def search_products(con: sqlite3.Connection, text: str, limit: int = 20, categor
       SELECT p.product_id, p.title, p.brand, p.category, p.sellers_total, p.price_min, p.price_median, p.price_max,
              bm25(products_fts, 4.0, 2.0, 1.0) - 0.8 * ln1p(p.sellers_total) AS score
       FROM products_fts JOIN products p ON p.rid = products_fts.rowid
-      WHERE products_fts MATCH ? {cat}
+      WHERE products_fts MATCH ? AND p.redacted = 0 {cat}
       ORDER BY score LIMIT ?"""
     args: list = [q]
     cat = ""
