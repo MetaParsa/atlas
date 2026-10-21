@@ -3,6 +3,7 @@
 import math
 import os
 import sqlite3
+import threading
 from pathlib import Path
 
 from core.text import normalize_fa
@@ -29,6 +30,34 @@ def connect() -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.create_function("ln1p", 1, math.log1p, deterministic=True)  # bundled SQLite may lack math functions
     return con
+
+
+_shared: sqlite3.Connection | None = None
+_shared_sig: tuple[int, int] | None = None
+_shared_lock = threading.Lock()
+
+
+def get() -> sqlite3.Connection:
+    """The one shared dataset connection, reopened whenever the DB file changes (a finished upload replaces a
+    partial one). Everything (app routes and agents) uses this, so nothing reads a stale file."""
+    global _shared, _shared_sig
+    with _shared_lock:
+        sig = file_signature()
+        if sig is None:
+            raise FileNotFoundError(DB_PATH)
+        if _shared is None or sig != _shared_sig:
+            if _shared is not None:
+                _shared.close()
+            _shared, _shared_sig = connect(), sig
+        return _shared
+
+
+def reset() -> None:
+    global _shared, _shared_sig
+    with _shared_lock:
+        if _shared is not None:
+            _shared.close()
+        _shared = _shared_sig = None
 
 
 def meta(con: sqlite3.Connection) -> dict[str, str]:

@@ -31,7 +31,7 @@ def test_rule_route_budget_credit_call():
 
 
 def test_invalid_condition_patches_are_ignored():
-    from torob.router import _apply_patch
+    from torob.router import apply_patch as _apply_patch
     s = SessionState()
     assert _apply_patch(s, {"payment": "free", "radius_km": "far", "center": {"lat": 0}, "budget_max": 2_000_000}) == ["budget_max"]
     assert s.conditions.payment == "any" and s.conditions.budget_max == 2_000_000

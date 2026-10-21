@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+MAX_TEXT = 1000      # longest user message we accept (keeps prompts and bills bounded)
 
 DEFAULT_AREA = "جمهوری / فردوسی"
 DEFAULT_CENTER = (35.6935, 51.4150)
@@ -19,14 +21,20 @@ class Location(BaseModel):
 class Conditions(BaseModel):
     """The conditions strip; the agent edits the same object from chat, so strip and chat never disagree."""
     center: Location = Field(default_factory=lambda: Location(lat=DEFAULT_CENTER[0], lng=DEFAULT_CENTER[1], label=DEFAULT_AREA))
-    radius_km: float | None = 3          # None = کل تهران
-    budget_min: int | None = None
-    budget_max: int | None = None
+    radius_km: float | None = Field(3, gt=0, le=50, allow_inf_nan=False)   # None = کل تهران
+    budget_min: int | None = Field(None, ge=0)
+    budget_max: int | None = Field(None, gt=0)
     payment: Literal["any", "credit", "credit_in_person"] = "any"
     fast_delivery: bool = False
     open: Literal["any", "now", "at_arrival"] = "at_arrival"
     arrive_at: datetime | None = None    # «ساعت ۸:۳۰ میام»; None = now + travel time
     mode: Literal["walk", "car"] = "walk"
+
+    @model_validator(mode="after")
+    def _budget_order(self):
+        if self.budget_min is not None and self.budget_max is not None and self.budget_min > self.budget_max:
+            raise ValueError("budget_min > budget_max")
+        return self
 
 
 class Need(BaseModel):
@@ -44,11 +52,11 @@ class Need(BaseModel):
 
 class Chip(BaseModel):
     """An answer chip. `say` sends `value` as the user's message; `direct_call` runs `tool(args)` with no LLM (A4)."""
-    label: str
-    value: str = ""
+    label: str = Field(max_length=80)
+    value: str = Field("", max_length=300)
     kind: Literal["say", "direct_call"] = "say"
-    tool: str | None = None
-    args: dict = {}
+    tool: str | None = Field(None, max_length=40)
+    args: dict = {}      # validated per tool by the router's registry before any call
 
 
 class RouterOutput(BaseModel):

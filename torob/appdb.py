@@ -15,29 +15,32 @@ CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, state TEXT NOT NULL, cr
 CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ts REAL, event TEXT, data TEXT);
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 """
+KEEP_DAYS = 7
 
 
 class AppDB:
+    """One connection shared across threads; every access goes through the lock."""
+
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path or os.environ.get("TOROB_APP_DB", "data/app.db"))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._con = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
-        self._con.execute("PRAGMA journal_mode=WAL")
-        self._con.executescript(SCHEMA)
         self._lock = threading.Lock()
-
-    def new_session(self) -> tuple[str, SessionState]:
-        sid, state = uuid.uuid4().hex, SessionState()
-        self.save(sid, state)
-        return sid, state
+        with self._lock:
+            self._con.execute("PRAGMA journal_mode=WAL")
+            self._con.executescript(SCHEMA)
+        self.purge()
 
     def load(self, sid: str | None) -> tuple[str, SessionState]:
+        """Existing session, or a fresh id + state that is only written on save (no row per anonymous request)."""
         if sid:
-            row = self._con.execute("SELECT state FROM sessions WHERE id = ?", (sid,)).fetchone()
+            with self._lock:
+                row = self._con.execute("SELECT state FROM sessions WHERE id = ?", (sid,)).fetchone()
             if row:
                 return sid, SessionState.model_validate_json(row[0])
-        return self.new_session()
+        return uuid.uuid4().hex, SessionState()
 
     def save(self, sid: str, state: SessionState) -> None:
         now = time.time()
@@ -53,6 +56,13 @@ class AppDB:
                               (sid, time.time(), event, json.dumps(data, ensure_ascii=False)))
 
     def events(self, sid: str, after: int = 0) -> list[dict]:
-        rows = self._con.execute("SELECT id, event, data FROM events WHERE session_id = ? AND id > ? ORDER BY id",
-                                 (sid, after)).fetchall()
+        with self._lock:
+            rows = self._con.execute("SELECT id, event, data FROM events WHERE session_id = ? AND id > ? ORDER BY id",
+                                     (sid, after)).fetchall()
         return [{"id": i, "event": e, "data": json.loads(d)} for i, e, d in rows]
+
+    def purge(self, keep_days: int = KEEP_DAYS) -> None:
+        cutoff = time.time() - keep_days * 86400
+        with self._lock:
+            self._con.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+            self._con.execute("DELETE FROM sessions WHERE updated < ?", (cutoff,))

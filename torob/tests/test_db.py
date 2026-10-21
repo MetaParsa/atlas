@@ -80,7 +80,7 @@ def test_health_recovers_after_upload(tmp_path, monkeypatch):
     partial = tmp_path / "torob.db"
     partial.write_bytes(b"")                                               # an upload that hasn't finished
     monkeypatch.setattr(store, "DB_PATH", partial)
-    app_mod._reset()
+    store.reset()
     client = TestClient(app_mod.app)
     assert client.get("/health").json()["status"] == "building"
     monkeypatch.setattr(store, "DB_PATH", store.Path("data/torob.db"))
