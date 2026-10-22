@@ -37,6 +37,7 @@ class ShopOffer:
     seller_title: str
     warranty: str | None
     per_metre: bool
+    seller_note: str | None = None    # the seller's own description of the product (12% of offers)
     meters: float = 0
     minutes: int = 0
     mode: str = "walk"
@@ -83,7 +84,8 @@ def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], set[str]]:
     if prod is None:
         raise KeyError(product_id)
     rows = con.execute(
-        "SELECT o.shop_id, o.price_toman, o.price_changed_at, o.price_flag, o.seller_title, o.warranty, o.per_metre "
+        "SELECT o.shop_id, o.price_toman, o.price_changed_at, o.price_flag, o.seller_title, o.warranty, o.per_metre, "
+        "o.description "
         "FROM offers o WHERE o.product_id = ?", (product_id,)).fetchall()
     by_shop: dict[str, list] = {}
     for r in rows:
@@ -104,7 +106,8 @@ def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], set[str]]:
             shop=shops[sid], price_min=min(r["price_toman"] for r in sane) if sane else None,
             price_max=max(r["price_toman"] for r in sane) if sane else None, changed_at=changed, flags=flags,
             seller_title=ref[0]["seller_title"], warranty=next((r["warranty"] for r in rs if r["warranty"]), None),
-            per_metre=any(r["per_metre"] for r in rs), payments=pays.get(sid, [])))
+            per_metre=any(r["per_metre"] for r in rs), payments=pays.get(sid, []),
+            seller_note=next((" ".join(r["description"].split()) for r in rs if (r["description"] or "").strip()), None)))
     return dict(prod), offers, suspicious_only
 
 
@@ -383,6 +386,12 @@ def price_line(o: ShopOffer, now: datetime) -> dict:
             "min": o.price_min, "max": o.price_max, "per_metre": bool(o.per_metre)}   # numbers for the card layout
 
 
+def _link(url: str | None) -> str | None:
+    """A shop's own Instagram page or website, only as a plain http(s) URL."""
+    url = (url or "").strip()
+    return url if url.startswith(("https://", "http://")) and " " not in url and len(url) <= 300 else None
+
+
 def payment_labels(o: ShopOffer) -> list[str]:
     out = []
     for prov, ch in o.payments:
@@ -408,8 +417,9 @@ def card(o: ShopOffer, product: dict, cond: Conditions, now: datetime) -> dict:
                     "warranty": o.warranty or "گارانتی ثبت نشده",
                     "fast_delivery": {True: "ارسال فوری دارد", False: "ارسال فوری ندارد"}.get(
                         None if s["fast_delivery"] is None else bool(s["fast_delivery"]), "ارسال فوری ثبت نشده"),
-                    "seller_title": o.seller_title},
+                    "seller_title": o.seller_title,
+                    "seller_note": (o.seller_note[:280] + "…") if o.seller_note and len(o.seller_note) > 280 else o.seller_note},
         "badges": o.badges[:2], "reasons": reasons, "same_building_others": o.same_building_others,
         "lat": s["lat"], "lon": s["lon"], "button": call.model_dump(),
-        "instagram": s["instagram"], "website": s["website"],
+        "instagram": _link(s["instagram"]), "website": _link(s["website"]),   # only the 112 real-named shops have one
     }

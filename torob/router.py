@@ -464,6 +464,16 @@ def _relevance_judge(state: SessionState, em: Emitter):
     return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
 
 
+def ask_with_options(state: SessionState, em: Emitter, q) -> str:
+    """The model's clarifying question as answer buttons. A tapped answer is sent as the user's reply, so the next
+    turn reads it with the conversation; a waiting question also offers «فرقی نداره» so nobody gets stuck."""
+    chips = [Chip(label=o, kind="say", value=o) for o in q.options]
+    if q.wait:
+        chips.append(Chip(label="فرقی نداره", kind="say", value="فرقی نداره؛ همین‌طوری چندتا مدل پیشنهاد بده"))
+    state.remember("assistant", q.text)
+    return em.emit("question", {"text": q.text, "chips": [c.model_dump() for c in chips]})
+
+
 def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterator[str]:
     """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
     yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
@@ -678,9 +688,15 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         yield em.emit("conditions", conditions_event(state))
     if out.intent in ("need", "named_product") and out.need:
         state.need = out.need
-        if out.message:
+        q = out.question if out.intent == "need" else None
+        if out.message and not q:
             yield say(state, em, out.message)
-        yield from show_products(state, em)
+        if q and q.wait:   # too vague: one question with answer buttons, models after the answer
+            yield ask_with_options(state, em, q)
+            return
+        yield from show_products(state, em, ask=not q)   # the model's own question replaces the advisor's
+        if q:
+            yield ask_with_options(state, em, q)
     elif out.intent == "refine":
         if state.need and state.last_block_kind in ("products", "shops"):   # the cards must reflect the new conditions
             yield from rerun_latest(state, em)

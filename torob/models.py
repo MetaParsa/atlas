@@ -68,6 +68,23 @@ class Chip(BaseModel):
     args: dict = {}      # validated per tool by the router's registry before any call
 
 
+class AskQuestion(BaseModel):
+    """One clarifying question from the model, shown with answer buttons; `wait` = too vague to suggest models yet."""
+    text: str = Field(max_length=160)
+    options: list[str] = []
+    wait: bool = False
+
+    @model_validator(mode="after")
+    def _tidy(self):
+        opts = []
+        for o in self.options:
+            o = " ".join(str(o).split())[:40]
+            if o and o not in opts:
+                opts.append(o)
+        self.options = opts[:4]
+        return self
+
+
 class RouterOutput(BaseModel):
     """The one JSON LLM call per free-text turn (R10); code routes on `intent`."""
     intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "other"] = "other"
@@ -75,12 +92,16 @@ class RouterOutput(BaseModel):
     conditions_patch: dict = {}
     target: str = Field("", max_length=80)   # call_shop: which shown shop («اولی», «دومی», or part of its name)
     message: str = ""
+    question: AskQuestion | None = None   # only with a model; the rule-based parser never asks
 
     @model_validator(mode="before")
     @classmethod
     def _nulls_are_empty(cls, v):
         if isinstance(v, dict):
             v = {k: x for k, x in v.items() if not (x is None and k in ("conditions_patch", "target", "message"))}
+            q = v.get("question")
+            if isinstance(q, dict) and (not str(q.get("text") or "").strip() or len(q.get("options") or []) < 2):
+                v["question"] = None   # a question without at least two answers is just prose; drop it
         return v
 
 

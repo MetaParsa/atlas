@@ -190,6 +190,9 @@ table.compare td:first-child { color: var(--muted); }
 .sname { flex: 1; min-width: 0; }
 .sname .name { font-weight: 600; font-size: 16px; line-height: 1.5; }
 .sname .meta { line-height: 1.5; }
+.shop-links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; font-size: 13px; }
+.shop-links a { color: var(--blue); text-decoration: none; font-weight: 600; }
+.note-seller { white-space: pre-line; }
 .sprice { text-align: end; flex: none; max-width: 48%; }
 .sprice .amt { font-weight: 700; font-size: 17px; line-height: 1.4; letter-spacing: -.01em; }
 .sprice .amt small { font-weight: 400; font-size: 12px; color: var(--muted); letter-spacing: 0; }

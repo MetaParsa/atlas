@@ -399,12 +399,22 @@ function line(ic, text, cls) {
   return el("div", { class: "ln" + (cls ? " " + cls : "") }, icon(ic), el("span", { class: cls?.startsWith("open-") ? "st" : null, text }));
 }
 
+// The 112 shops with a real name in the dataset are the ones with an Instagram page or a website: link to them.
+const safeUrl = (u) => (typeof u === "string" && /^https?:\/\/[^\s]+$/.test(u) ? u : null);
+function shopLinks(s) {
+  const links = [[safeUrl(s.instagram), "اینستاگرام فروشگاه"], [safeUrl(s.website), "سایت فروشگاه"]].filter(([u]) => u);
+  if (!links.length) return null;
+  return el("div", { class: "shop-links" }, links.map(([href, text]) =>
+    el("a", { href, target: "_blank", rel: "noopener noreferrer nofollow", text })));
+}
+
 function shopCard(s, compact = false) {
   const open = s.visit.open_at_arrival === "yes" ? "open-yes" : s.visit.open_at_arrival === "no" ? "open-no" : "";
   const card = el("article", { class: "card scard" + (compact ? " compact" : ""), "data-shop-id": s.shop_id },
     el("div", { class: "shead" },
       compact ? null : el("span", { class: "avatar" }, icon("store")),
-      el("div", { class: "sname" }, el("div", { class: "name", text: s.name }), s.area ? el("div", { class: "meta", text: s.area }) : null),
+      el("div", { class: "sname" }, el("div", { class: "name", text: s.name }), s.area ? el("div", { class: "meta", text: s.area }) : null,
+        shopLinks(s)),
       shopPrice(s.price)),
     el("div", { class: "lines" },
       line("pin", s.where, "where"),
@@ -420,7 +430,8 @@ function shopCard(s, compact = false) {
       el("div", { class: "meta", text: det.payments.join("، ") }),
       el("div", { class: "meta", text: det.warranty }),
       el("div", { class: "meta", text: det.fast_delivery }),
-      el("div", { class: "meta", text: "عنوان فروشنده: " + det.seller_title })));
+      el("div", { class: "meta", text: "عنوان فروشنده: " + det.seller_title }),
+      det.seller_note ? el("div", { class: "meta note-seller", text: "توضیح فروشنده: " + det.seller_note }) : null));
   }
   card.append(chipButton(s.button, compact ? "btn line" : "btn red", `زنگ به «${s.name}»`, "phone"));
   return card;

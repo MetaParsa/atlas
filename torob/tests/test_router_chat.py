@@ -99,3 +99,62 @@ def test_router_output_accepts_nulls_for_empty_fields():
     out = RouterOutput.model_validate({"intent": "need", "message": None, "conditions_patch": None,
                                        "need": {"product_type": "هندزفری", "brand_pref": None, "keywords": None}})
     assert out.need.brand_pref == [] and out.need.keywords == [] and out.message == "" and out.conditions_patch == {}
+
+
+# --- the model's clarifying question with answer buttons ---------------------------------------------------------
+
+def test_router_question_is_tidied_or_dropped():
+    from torob.models import RouterOutput
+    out = RouterOutput.model_validate({"intent": "need", "need": {"product_type": "کتونی"}, "question": {
+        "text": "برای چی می‌خوایش؟", "options": [" دویدن ", "دویدن", "پیاده‌روی", "روزمره", "باشگاه", "کوه"], "wait": True}})
+    assert out.question.options == ["دویدن", "پیاده‌روی", "روزمره", "باشگاه"] and out.question.wait
+    for bad in (None, {"text": "", "options": ["a", "b"]}, {"text": "چی؟", "options": ["فقط یکی"]}):
+        assert RouterOutput.model_validate({"intent": "need", "question": bad}).question is None
+
+
+def _turn_with(router_json: dict, text: str):
+    llm = LLMClient([], {}, fake=FakeLLM(lambda role, m: router_json if role == "router" else "باشه"))
+    state, em = SessionState(), Emitter("q-test")
+    list(run_turn(llm, state, em, text=text))
+    return state, em.events
+
+
+@needs_db
+def test_vague_request_waits_for_the_answer_with_buttons():
+    state, events = _turn_with({"intent": "need", "need": {"product_type": "کتونی", "keywords": ["کتونی"]},
+                                "message": "حتماً! برای چی می‌خوای؟",
+                                "question": {"text": "بیشتر برای چی می‌خوایش؟", "options": ["دویدن", "روزمره"], "wait": True}},
+                               "یه کتونی می‌خوام ولی نمی‌دونم چه مدلی")
+    kinds = [e for e, _ in events]
+    assert "product_cards" not in kinds and "message" not in kinds   # no guesswork, no duplicate prose
+    q = next(d for e, d in events if e == "question")
+    assert [c["label"] for c in q["chips"]] == ["دویدن", "روزمره", "فرقی نداره"]
+    assert all(c["kind"] == "say" for c in q["chips"]) and state.history[-1]["content"] == "بیشتر برای چی می‌خوایش؟"
+
+
+@needs_db
+def test_clear_request_shows_models_then_the_models_question():
+    _, events = _turn_with({"intent": "need", "need": {"product_type": "هندزفری بلوتوثی", "keywords": ["هندزفری بلوتوثی"]},
+                            "question": {"text": "بیشتر کجا استفاده می‌کنی؟", "options": ["باشگاه", "تماس کاری"], "wait": False}},
+                           "هندزفری بلوتوثی")
+    kinds = [e for e, _ in events]
+    assert kinds.index("product_cards") < kinds.index("question")
+    questions = [d["text"] for e, d in events if e == "question"]
+    assert questions == ["بیشتر کجا استفاده می‌کنی؟"]   # the advisor's own budget/brand question is not added
+
+
+# --- real shops' links and the seller's own description ----------------------------------------------------------
+
+def test_shop_links_are_plain_web_urls_only():
+    from torob.agents.shops import _link
+    assert _link("https://www.instagram.com/Ariya__co/") == "https://www.instagram.com/Ariya__co/"
+    for bad in (None, "", "javascript:alert(1)", "data:text/html,x", "https://a b.com", "ftp://x.ir"):
+        assert _link(bad) is None
+
+
+@needs_db
+def test_seller_note_comes_from_the_offer_description():
+    from torob.agents import shops
+    pid = store.get().execute("SELECT product_id FROM offers WHERE length(trim(description)) > 20 LIMIT 1").fetchone()[0]
+    _, offers, _ = shops.load_offers(pid)
+    assert any(o.seller_note for o in offers)
