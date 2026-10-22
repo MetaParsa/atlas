@@ -135,7 +135,7 @@ function setBusy(on) {
 // The docked radish acts out the agent's work at the bottom of the chat; while the user scrolls back up through
 // results it steps aside, so it never covers a card they are reading.
 function syncDock() {
-  const away = document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 120;
+  const away = document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 24;   // it is 54 px tall over a ~64 px gap
   $("#app").classList.toggle("reading", away && !busy);
 }
 
@@ -350,19 +350,20 @@ function putBlock(id, node) {
 // --- generative UI: the model picks the blocks, the server fills every value from the cards on screen -----------------
 const genTag = () => el("span", { class: "gen-tag" }, icon("spark"), el("span", { text: "چیده‌شده با هوش مصنوعی" }));
 function genCard(cls, title, ...kids) {
-  return el("div", { class: `card gcard ${cls}` }, el("div", { class: "gen-h" }, el("span", { class: "gen-title", text: title }), genTag()), ...kids);
+  return el("div", { class: `card gcard ${cls}` }, genTag(), el("div", { class: "gen-title", text: title }), ...kids);
 }
 function genBlock(b) {
   if (b.type === "compare") {
+    // A grid, not a table: each row's label gets its own line and the values sit in equal columns, so long spec
+    // names never push the page sideways on a phone.
     const best = b.cols.findIndex((c) => c.best);
-    const cell = (tag, i, ...kids) => el(tag, { class: i === best ? "best" : null }, ...kids);
-    const t = el("table", { class: "gtable" },
-      el("thead", {}, el("tr", {}, el("th", { class: "rowh" }),
-        b.cols.map((c, i) => cell("th", i, el("div", { class: "ct", text: c.title, title: c.full || c.title }),
-          i === best ? el("span", { class: "best-tag" }, icon("check"), "بهترین برای تو") : el("div", { class: "cs", text: c.sub || "" }))))),
-      el("tbody", {}, b.rows.map((r) => el("tr", {}, el("th", { class: "rowh", scope: "row", text: r.label }),
-        r.values.map((v, i) => cell("td", i, el("bdi", { text: v })))))));
-    return genCard("gcompare", b.of === "products" ? "مقایسه‌ی مدل‌ها" : "مقایسه‌ی فروشنده‌ها", el("div", { class: "gscroll" }, t));
+    const grid = el("div", { class: "gcmp", role: "table", style: `--n:${b.cols.length}` },
+      b.cols.map((c, i) => el("div", { class: "gh" + (i === best ? " best" : ""), role: "columnheader" },
+        el("div", { class: "ct", text: c.title, title: c.full || c.title }),
+        i === best ? el("span", { class: "best-tag" }, icon("check"), "بهترین برای تو") : el("div", { class: "cs", text: c.sub || "" }))),
+      b.rows.flatMap((r) => [el("div", { class: "gl", role: "rowheader", text: r.label }),
+        ...r.values.map((v, i) => el("div", { class: "gv" + (i === best ? " best" : ""), role: "cell" }, el("bdi", { text: v })))]));
+    return genCard("gcompare", b.of === "products" ? "مقایسه‌ی مدل‌ها" : "مقایسه‌ی فروشنده‌ها", grid);
   }
   if (b.type === "bars") {
     const max = Math.max(...b.items.map((i) => i.value)) || 1;
@@ -372,8 +373,7 @@ function genBlock(b) {
       el("bdi", { class: "bval", text: i.text })))));
   }
   if (b.type === "pick") {
-    return el("div", { class: "card gcard gpick" },
-      el("div", { class: "gen-h" }, el("span", { class: "gen-title", text: b.kind === "shop" ? "پیشنهاد من برای خرید" : "پیشنهاد من" }), genTag()),
+    return el("div", { class: "card gcard gpick" }, genTag(),
       el("div", { class: "pick-t", text: shortTitle(b.title) }),
       b.sub ? el("div", { class: "meta" }, el("bdi", { text: b.sub })) : null,
       b.reason ? el("div", { class: "pick-r", text: b.reason }) : null,
@@ -570,6 +570,10 @@ function updateShopCard(d) {
     d.location ? el("div", { text: "نشانی‌ای که گفت: " + d.location }) : null,
     d.hold_until ? el("div", { text: `تا ${fa(d.hold_until)} نگه می‌دارن` }) : null);
   $(".lines", card).after(box);
+  const stock = $(".ln.stock", card);   // «موجودی: تأیید نشده» is now answered, by the simulated call above it
+  if (stock) stock.hidden = true;
+  const btn = card.querySelector(":scope > .btn");   // a shop that didn't have it is no longer the obvious next call
+  if (btn && d.stock !== "simulated_confirmed") btn.className = "btn line";
 }
 
 // --- plan («برنامه‌ی خرید») ------------------------------------------------------------------------------------------
