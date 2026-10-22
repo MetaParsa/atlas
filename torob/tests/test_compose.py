@@ -79,6 +79,14 @@ def test_prose_never_shows_ids_and_intro_keeps_to_choosing_help():
         "products", dict(PRODUCTS[0], specs={"باتری": "40ساعت"}), "باتری") == "40 ساعت"
 
 
+def test_bars_never_repeat_a_compared_measure():
+    b = board(products=PRODUCTS[:1], shops=SHOPS)
+    raw = {"blocks": [{"type": "bars", "of": "shops", "metric": "price", "ids": ["S1", "S2"]},
+                      {"type": "bars", "of": "shops", "metric": "minutes", "ids": ["S1", "S2"]},
+                      {"type": "compare", "of": "shops", "ids": ["S1", "S2"], "rows": ["price", "closes"]}]}
+    assert [(x["type"], x.get("metric")) for x in compose.fill(raw, b, "a", _ui_chip)] == [("bars", "minutes"), ("compare", None)]
+
+
 def test_unusable_answers_give_none():
     llm = NS(enabled=True, complete=FakeLLM(lambda r, m: "not json").complete)
     assert compose.compose(llm, board(), "کدوم؟", "s", intro=False, selected_product_id=None, chip_factory=_ui_chip) is None

@@ -412,7 +412,7 @@ function productBlock(d) {
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (!items.length) return block;
   block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
-    el("span", {}, `${fa(items.length)} مدل`, el("span", { class: "hint", text: "، بکش برای بقیه" }))));
+    el("span", {}, `${fa(items.length)} مدل`, items.length > 1 ? el("span", { class: "hint", text: "، بکش برای بقیه" }) : null)));
   const row = el("div", { class: "row" });
   const liveLines = [];
   for (const p of items) {

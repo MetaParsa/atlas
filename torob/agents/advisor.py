@@ -286,7 +286,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     for p in [*picks, *([named] if named else [])]:
         p.why = why_line(p, budget)
 
-    if in_area and picks and min(p.area.sellers for p in picks) < SELLER_FLOOR:
+    if in_area and picks and not named and min(p.area.sellers for p in picks) < SELLER_FLOOR:   # about the cards shown
         m = min(p.area.sellers for p in picks)
         notes.append("بعضی از این‌ها فقط یک فروشنده‌ی نزدیک دارن." if m == 1 else
                      "بعضی از این‌ها فقط دو فروشنده‌ی نزدیک دارن.")
