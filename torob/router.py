@@ -8,7 +8,7 @@ returns unusable JSON or the budget is spent.
 import re
 from collections.abc import Callable, Iterator
 from typing import Literal
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
@@ -22,7 +22,8 @@ from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import followup
 from torob.agents import shops as shops_agent
-from torob.models import Chip, Conditions, Location, Need, RouterOutput, SessionState
+from torob.logic import hours as H
+from torob.models import DEFAULT_AREA, DEFAULT_CENTER, Chip, Conditions, Location, Need, RouterOutput, SessionState
 
 ROUTER_PROMPT = (Path(__file__).parent / "prompts" / "router.md").read_text(encoding="utf-8")
 
@@ -123,11 +124,22 @@ def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) 
 # --- conditions -----------------------------------------------------------------------------------------------
 
 def _parse_arrive_at(v) -> datetime | None:
-    if isinstance(v, str) and (m := _HHMM.match(to_latin_digits(v.strip()))):
+    """«HH:MM» (today, or tomorrow if already past) or an ISO datetime within the next 7 days (the «شنبه ۱۰ صبح»
+    chip). Built on the demo clock, not the real date."""
+    if not isinstance(v, str):
+        return None
+    v = to_latin_digits(v.strip())
+    if m := _HHMM.match(v):
         h, mi = int(m.group(1)), int(m.group(2))
         if h < 24 and mi < 60:
-            return clock.now().replace(hour=h, minute=mi, second=0, microsecond=0)   # demo clock, not the real date
-    return None
+            return clock.now().replace(hour=h, minute=mi, second=0, microsecond=0)
+        return None
+    try:
+        dt = H.as_tehran(datetime.fromisoformat(v))
+    except ValueError:
+        return None
+    now = clock.now()
+    return dt if now - timedelta(minutes=1) <= dt <= now + timedelta(days=7) else None
 
 
 def apply_patch(state: SessionState, patch: dict) -> list[str]:
@@ -158,7 +170,21 @@ def conditions_event(state: SessionState) -> dict:
             "budget_label": f"تا {format_price_short(c.budget_max)}" if c.budget_max else None,
             "payment": c.payment, "fast_delivery": c.fast_delivery, "open": c.open,
             "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None,
+            "arrive_label": _arrive_label(c.arrive_at),
             "demo_time": clock.now().strftime("%H:%M") if clock.is_demo() else None}
+
+
+def _arrive_label(dt: datetime | None) -> str | None:
+    """«رسیدن ۲۰:۳۰» today, «رسیدن شنبه ۱۰:۰۰» on another day."""
+    if not dt:
+        return None
+    dt, now = H.as_tehran(dt), clock.now()
+    t = to_fa_digits(dt.strftime("%H:%M"))
+    days = (dt.date() - now.date()).days
+    if days <= 0:
+        return f"رسیدن {t}"
+    day = "فردا" if days == 1 else shops_agent.WEEKDAYS[H.iran_weekday(dt.date())]
+    return f"رسیدن {day} {t}"
 
 
 def say(state: SessionState, em: Emitter, text: str) -> str:
@@ -225,7 +251,7 @@ class SetConditionsArgs(DirectTool):
     open: Literal["any", "now", "at_arrival"] | None = None
     fast_delivery: bool | None = None
     budget_max: int | None = Field(None, ge=1_000, le=100_000_000_000)
-    arrive_at: str | None = Field(None, max_length=5)
+    arrive_at: str | None = Field(None, max_length=25)
     mode: Literal["walk", "car"] | None = None
 
 
@@ -446,6 +472,8 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
                                     "compare_rows": res.compare_rows, "notes": res.notes})
     if not cards:
         yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
+    elif not res.in_area and state.conditions.radius_km:
+        yield from _coverage_offer(state, em)
     elif ask and res.question:
         state.remember("assistant", res.question["text"])
         yield em.emit("question", res.question)
@@ -493,10 +521,46 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
         "relaxed": res.relaxed, "demo_time": now.strftime("%H:%M") if clock.is_demo() else None,
         "disclaimer": "نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است.",
     })
-    if not cards:
+    if c["found"] == 0:
+        yield from _coverage_offer(state, em)
+    elif not cards:
         yield say(state, em, res.notes[0] if res.notes else "نزدیکت فروشنده‌ای برای این مدل ثبت نشده.")
+    elif not state.conditions.arrive_at and c["closed_at_arrival"] >= 0.5 * max(1, c["found"] - c["terms_mismatch"]):
+        yield from _closed_now_offer(state, em, now)
     if state.plan and state.plan.get("product_id") == state.selected_product_id:
         yield from _recheck_plan(state, em)
+
+
+def _next_shopping_morning(now: datetime) -> datetime:
+    """Tomorrow 10:00, skipping Friday (most shops in the data are closed on Fridays)."""
+    day = now + timedelta(days=1)
+    while H.iran_weekday(day.date()) == 6:
+        day += timedelta(days=1)
+    return day.replace(hour=10, minute=0, second=0, microsecond=0)
+
+
+def _closed_now_offer(state: SessionState, em: Emitter, now: datetime) -> Iterator[str]:
+    """R1: most shops are closed when you'd get there → offer the next shopping morning instead of a dead end."""
+    morning = _next_shopping_morning(now)
+    day = "فردا" if (morning.date() - now.date()).days == 1 else shops_agent.WEEKDAYS[H.iran_weekday(morning.date())]
+    why = "جمعه‌ست و " if H.iran_weekday(now.date()) == 6 else ""
+    text = f"{why}الان بیشتر مغازه‌ها تا برسی بسته‌ان — برای {day} ۱۰ صبح نشون بدم؟"
+    chips = [Chip(label=f"{day} ۱۰ صبح", kind="direct_call", tool="set_conditions",
+                  args={"arrive_at": morning.isoformat()}).model_dump(),
+             Chip(label="نه، همین الان", kind="direct_call", tool="noop").model_dump()]
+    state.remember("assistant", text)
+    yield em.emit("question", {"text": text, "chips": chips})
+
+
+def _coverage_offer(state: SessionState, em: Emitter) -> Iterator[str]:
+    """R1/Scene 10: the dataset covers ~10% of Torob's Tehran shops, mostly around Jomhouri/Ferdowsi; say so."""
+    text = "داده‌ی ترب این‌جا فروشگاه زیادی نداره (بیشترش اطراف جمهوری و فردوسیه). کجا رو نشون بدم؟"
+    lat, lng = DEFAULT_CENTER
+    chips = [Chip(label="جمهوری / فردوسی", kind="direct_call", tool="set_location",
+                  args={"lat": lat, "lng": lng, "label": DEFAULT_AREA, "source": "area"}).model_dump(),
+             Chip(label="کل تهران", kind="direct_call", tool="set_conditions", args={"radius_km": None}).model_dump()]
+    state.remember("assistant", text)
+    yield em.emit("question", {"text": text, "chips": chips})
 
 
 def _recheck_plan(state: SessionState, em: Emitter) -> Iterator[str]:

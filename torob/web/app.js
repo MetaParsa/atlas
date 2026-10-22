@@ -299,7 +299,7 @@ function setConditions(d) {
   set("payment", (d.payment === "any" ? "پرداخت: همه" : pay) + (d.fast_delivery ? "، ارسال فوری" : ""),
       d.payment !== "any" || d.fast_delivery);
   set("open", (OPENS.find((o) => o[0] === d.open) || OPENS[0])[1], d.open !== "at_arrival");
-  set("arrive", d.arrive_at ? `رسیدن ${fa(d.arrive_at)}` : "رسیدن: الان", !!d.arrive_at);
+  set("arrive", d.arrive_label || (d.arrive_at ? `رسیدن ${fa(d.arrive_at)}` : "رسیدن: الان"), !!d.arrive_at);
   const demo = $("#demo-time");
   demo.hidden = !d.demo_time;
   if (d.demo_time) demo.textContent = `زمان دمو ${fa(d.demo_time)}`;

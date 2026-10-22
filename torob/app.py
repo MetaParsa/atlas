@@ -1,5 +1,6 @@
 """Torob in-store shopping agent — web app (one origin: UI, API and admin; spec D19)."""
 
+import html
 import os
 import sqlite3
 import threading
@@ -9,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Cookie, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -50,6 +51,8 @@ class RateLimiter:
         self._hits: dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
 
+    rejected = 0   # shown on /admin
+
     def allow(self, key: str) -> bool:
         now = time.monotonic()
         with self._lock:
@@ -57,6 +60,7 @@ class RateLimiter:
             while q and now - q[0] > self.window:
                 q.popleft()
             if len(q) >= self.limit:
+                self.rejected += 1
                 return False
             q.append(now)
             if len(self._hits) > 50_000:
@@ -133,6 +137,49 @@ def reset(sid: str | None = Cookie(default=None, max_length=64)) -> JSONResponse
     resp = JSONResponse({"ok": True})
     resp.delete_cookie("sid")
     return resp
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin() -> HTMLResponse:
+    """«پشت صحنه» for judges: read-only numbers, no user text, no keys. Server-rendered, every value escaped."""
+    e = html.escape
+    try:
+        m = store.meta(store.get())
+    except Exception:
+        m = {}
+    st = appdb().stats()
+    c = llm()
+    fmt = lambda v: "—" if v is None else f"{v:,}"
+    rows = lambda items: "".join(f"<tr><th>{e(str(k))}</th><td>{e(str(v))}</td></tr>" for k, v in items)
+    outcomes = {"ok": "تأیید (شبیه‌سازی)", "unavailable": "ناموجود (شبیه‌سازی)", "no_answer": "جواب نداد (شبیه‌سازی)"}
+    sections = [
+        ("دیتاست", [("نسخه", m.get("dataset_version", "—")), ("ساخته‌شده", m.get("built_at", "—")),
+                    ("خروجی ترب", m.get("exported_at", "—")), ("فروشگاه", fmt(int(m.get("rows_shops", 0) or 0))),
+                    ("محصول", fmt(int(m.get("rows_products", 0) or 0))), ("پیشنهاد (offer)", fmt(int(m.get("rows_offers", 0) or 0))),
+                    ("قیمت مشکوک کنار گذاشته", fmt(int(m.get("flagged_offers", 0) or 0)))]),
+        ("هوش مصنوعی", [("LLM فعال", "بله" if c.enabled else "خیر (قواعد + FakeLLM؛ بدون هزینه)"),
+                        ("توکن مصرف‌شده امروز", fmt(c.guard.used_today())), ("سقف روزانه", fmt(c.guard.daily_tokens)),
+                        ("سقف هر نشست", fmt(c.guard.session_tokens)),
+                        ("آخرین فراخوانی‌ها", "، ".join(f"{x['role']}:{x['tokens']}" for x in c.log[-5:]) or "—")]),
+        ("۲۴ ساعت اخیر", [("نشست", st["sessions"]), ("نوبت", st["turns"]),
+                          ("زمان پاسخ p50 / p95 (ms)", f"{fmt(st['p50_ms'])} / {fmt(st['p95_ms'])}"),
+                          ("تماس شبیه‌سازی‌شده", st["calls"]),
+                          *[(outcomes.get(k, k), v) for k, v in st["call_outcomes"].items()],
+                          ("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected)]),
+    ]
+    errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
+                   for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"
+    body = "".join(f"<h2>{e(t)}</h2><table>{rows(items)}</table>" for t, items in sections)
+    page = f"""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>پشت صحنه</title>
+<style>body{{font-family:Vazirmatn,Tahoma,sans-serif;max-width:640px;margin:auto;padding:16px;background:#f6f7f8;color:#1d2330}}
+h1{{font-size:20px}}h2{{font-size:15px;margin-top:20px;color:#0f766e}}table{{width:100%;border-collapse:collapse;background:#fff}}
+th,td{{text-align:start;padding:6px 8px;border-bottom:1px solid #e3e6ea;font-size:14px;vertical-align:top}}th{{width:55%;font-weight:500;color:#5f6878}}
+p{{font-size:13px;color:#5f6878}}</style>
+<h1>پشت صحنه</h1>
+<p>عددها از دیتاست ترب و لاگ رویدادهای همین سرورند. تماس‌ها شبیه‌سازی است (شماره‌های دیتاست ساختگی‌اند).</p>
+{body}<h2>آخرین خطاها</h2><table>{errs}</table><p><a href="/">بازگشت به دستیار</a></p></html>"""
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 class RefineIn(BaseModel):

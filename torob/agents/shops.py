@@ -317,7 +317,8 @@ def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
                 notes.append(f"با این شرایط فروشنده‌ای نبود؛ {label}: {to_fa_digits(len(got))} فروشنده.")
                 break
     if not passing and offers:
-        notes.append("فروشنده‌های این مدل با هیچ تغییر ساده‌ای جور نشدن.")
+        notes.append("نزدیکت فروشنده‌ای برای این مدل ثبت نشده." if not nearby
+                     else "فروشنده‌های این مدل با هیچ تغییر ساده‌ای جور نشدن.")
     _score(passing, now)
     # A10: known-open first, then unknown hours, then closed-at-arrival (only reachable via a relaxed «open»).
     open_rank = {"yes": 0, "tight": 0, "unknown": 1, "no": 2}

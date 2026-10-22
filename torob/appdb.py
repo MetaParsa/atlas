@@ -61,6 +61,28 @@ class AppDB:
                                      (sid, after)).fetchall()
         return [{"id": i, "event": e, "data": json.loads(d)} for i, e, d in rows]
 
+    def stats(self, hours: int = 24) -> dict:
+        """Numbers for /admin over the last `hours`: sessions, turns, latency, calls, errors. No user text."""
+        since = time.time() - hours * 3600
+        with self._lock:
+            q = lambda sql, *a: self._con.execute(sql, a).fetchall()
+            sessions = q("SELECT count(*) FROM sessions WHERE updated >= ?", since)[0][0]
+            by_event = dict(q("SELECT event, count(*) FROM events WHERE ts >= ? GROUP BY 1", since))
+            done_ms = sorted(json.loads(d).get("ms", 0) for (d,) in q(
+                "SELECT data FROM events WHERE ts >= ? AND event = 'done'", since))
+            calls = [json.loads(d)["result"] for (d,) in q(
+                "SELECT data FROM events WHERE ts >= ? AND event = 'call_result'", since)]
+            errors = [(ts, json.loads(d)) for ts, d in q(
+                "SELECT ts, data FROM events WHERE event = 'error' ORDER BY id DESC LIMIT 10")]
+        pct = lambda p: done_ms[min(len(done_ms) - 1, int(p * len(done_ms)))] if done_ms else None
+        outcomes: dict[str, int] = {}
+        for c in calls:
+            outcomes[c["outcome"]] = outcomes.get(c["outcome"], 0) + 1
+        return {"sessions": sessions, "events": by_event, "turns": len(done_ms), "p50_ms": pct(0.5),
+                "p95_ms": pct(0.95), "calls": len(calls), "call_outcomes": outcomes,
+                "errors": [{"at": time.strftime("%m-%d %H:%M", time.localtime(ts)), "text": d.get("text"),
+                            "detail": d.get("detail")} for ts, d in errors]}
+
     def purge(self, keep_days: int = KEEP_DAYS) -> None:
         cutoff = time.time() - keep_days * 86400
         with self._lock:
