@@ -1,9 +1,9 @@
 """Product search for the advisor: query variants, category inference, candidates (spec §0.2 R12).
 
 FTS5 (unicode61, normalised Persian) does the matching; this module decides *which* queries and *which*
-categories. With an LLM, `Need.category_hints` narrows the categories; without one, the category is inferred from
-where the hits land, favouring a category whose name starts with the request's head word
-(«شارژر آیفون» → «شارژر گوشی», not Lightning cables).
+categories. The category comes from where the hits land, favouring a category whose name starts with the request's
+head word; an LLM's `Need.category_hints` may only narrow that choice, never add a category the hits don't support
+(«شارژر آیفون» → «شارژر گوشی», not Lightning cables; «گوشی» → phones, not phone batteries).
 """
 
 import re
@@ -24,6 +24,28 @@ SYNONYMS = {
 }
 _SYN = {normalize_fa(k): [normalize_fa(v) for v in vs] for k, vs in SYNONYMS.items()}   # «آیفون» → «ایفون»
 _GENERIC = set("برای با و یا که این اون یه یک مدل نوع خوب ارزون ارزان اصل اورجینال باشگاه ورزش خونه خانه کار".split())
+# Accessories are titled and categorised after the thing they fit («کاور سیلیکونی هایلو X1 Neo», «کیف و کاور هدفون و
+# هندزفری»), so a search for earbuds also hits their cases. They stay out unless the shopper asked for one.
+ACCESSORY_WORDS = {normalize_fa(w) for w in "کیف کاور قاب گلس محافظ بند کیس استند پایه نگهدارنده".split()}
+# Category names that are accessories *for* something; «کیف و کوله», «قطعات کامپیوتر», «لوازم التحریر» are products.
+ACCESSORY_CATEGORIES = tuple(normalize_fa(p) for p in ("کیف و کاور", "کاور", "قاب", "گلس", "محافظ صفحه", "بند", "لوازم جانبی"))
+
+
+def wants_accessory(need: Need) -> bool:
+    """The shopper's own words (not the model's category hints) name an accessory: «کاور ایرپاد», «قاب آیفون»."""
+    text = normalize_fa(" ".join(filter(None, [need.named_product, need.product_type, *need.keywords])))
+    return bool(set(to_latin_digits(text).split()) & ACCESSORY_WORDS)
+
+
+def is_accessory(title: str) -> bool:
+    """A product title that starts with an accessory word: «کاور سیلیکونی هایلو X1 Neo»."""
+    words = to_latin_digits(normalize_fa(title)).split()
+    return bool(words) and words[0] in ACCESSORY_WORDS
+
+
+def is_accessory_category(category: str) -> bool:
+    """«کیف و کاور هدفون و هندزفری», «سایر لوازم جانبی هدفون و هندزفری» — accessories for the thing searched."""
+    return normalize_fa(category).removeprefix(normalize_fa("سایر ")).startswith(ACCESSORY_CATEGORIES)
 
 
 @dataclass
@@ -76,17 +98,18 @@ def head_word(need: Need) -> str:
     return ""
 
 
-def hint_categories(con: sqlite3.Connection, hints: list[str]) -> list[str]:
-    """LLM category hints → real category names (exact, then 'contains'), most offers first."""
+def hint_categories(con: sqlite3.Connection, hints: list[str], accessories: bool = True) -> list[str]:
+    """LLM category hints → real category names (exact, then 'contains'), most offers first. With
+    `accessories=False`, «کیف و کاور …» / «لوازم جانبی …» categories are skipped (the hint «هندزفری» matches both)."""
     found: list[str] = []
     for h in hints[:3]:
         hn = normalize_fa(h)
         if not hn:
             continue
         rows = con.execute("SELECT category FROM categories WHERE category_norm = ? OR category_norm LIKE ? "
-                           "ORDER BY (category_norm = ?) DESC, offer_count DESC LIMIT 2",
+                           "ORDER BY (category_norm = ?) DESC, offer_count DESC LIMIT 4",
                            (hn, f"%{hn}%", hn)).fetchall()
-        found += [r[0] for r in rows if r[0] not in found]
+        found += [r[0] for r in rows if r[0] not in found and (accessories or not is_accessory_category(r[0]))][:2]
     return found[:2]
 
 
@@ -150,7 +173,14 @@ def candidates(need: Need, limit_per_query: int = 60) -> tuple[list[Candidate], 
     raw: list[dict] = []
     for q in qs:
         raw += store.search_products(con, q, limit=limit_per_query)
-    cats = hint_categories(con, need.category_hints) or infer_categories(raw, head_word(need))
+    acc = wants_accessory(need)
+    if not acc:   # cases and covers don't get to vote for the category of an earbuds search
+        raw = [h for h in raw if not is_accessory_category(h["category"])] or raw
+    # The text hits decide the category; the model's hints may only narrow that choice. A hint alone matches by name
+    # and lands on parts and accessories («گوشی موبایل» → «باتری گوشی موبایل», «ساعت هوشمند» → «شارژر ساعت هوشمند»).
+    inferred = infer_categories(raw, head_word(need))
+    hinted = hint_categories(con, need.category_hints, accessories=acc)
+    cats = [c for c in inferred if c in hinted] or inferred or hinted
     by_id: dict[str, tuple[int, dict]] = {}
     for q in qs:
         for c in cats:
@@ -165,6 +195,8 @@ def candidates(need: Need, limit_per_query: int = 60) -> tuple[list[Candidate], 
         f"price_median, price_max, fresh_offers_30d FROM products WHERE product_id IN ({','.join('?' * len(ids))}) "
         f"AND price_median IS NOT NULL", ids).fetchall()
     out = [Candidate(**dict(r), rank=by_id[r["product_id"]][0]) for r in rows]
+    if not acc:   # «کاور سیلیکونی …» in the earbuds category is still a case (kept only if nothing else matched)
+        out = [c for c in out if not is_accessory(c.title_norm)] or out
     out.sort(key=lambda c: c.rank)
     return out, cats
 

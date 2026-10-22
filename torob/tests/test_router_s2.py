@@ -61,3 +61,24 @@ def test_named_model_skips_to_shops():
     kinds = [e for e, _ in events]
     assert "question" not in kinds and "shop_cards" in kinds
     assert len(dict(events)["product_cards"]["items"]) == 1 and s.selected_product_id
+
+
+@pytest.mark.skipif(not __import__("torob").store.DB_PATH.exists(), reason="run torob.etl.build_db first")
+@pytest.mark.parametrize("text,hints,bad", [
+    ("هندزفری بلوتوثی", ["هندزفری", "لوازم جانبی موبایل"], "کاور"),       # the live case: a silicone case for earbuds
+    ("گوشی سامسونگ", ["گوشی موبایل", "لوازم جانبی موبایل"], "باتری"),     # hint matched «باتری گوشی موبایل»
+    ("ساعت هوشمند", ["ساعت هوشمند"], "شارژر"),                             # hint matched «شارژر ساعت هوشمند»
+])
+def test_model_category_hints_never_pull_in_parts_or_accessories(text, hints, bad):
+    from torob.agents import advisor
+    from torob.models import Conditions, Need
+    res = advisor.pick_products(Need(product_type=text, keywords=[text], category_hints=hints), Conditions(radius_km=None))
+    assert res.picks and not any(bad in p.c.category or p.c.title.startswith(bad) for p in res.picks)
+
+
+@pytest.mark.skipif(not __import__("torob").store.DB_PATH.exists(), reason="run torob.etl.build_db first")
+def test_asking_for_an_accessory_still_finds_accessories():
+    from torob.agents import advisor
+    from torob.models import Conditions, Need
+    res = advisor.pick_products(Need(product_type="کاور ایرپاد", keywords=["کاور ایرپاد"]), Conditions(radius_km=None))
+    assert res.picks and all("کاور" in p.c.category for p in res.picks)
