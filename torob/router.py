@@ -13,12 +13,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from core.agent_loop import Emitter
+from core.agent_loop import Emitter, Tool, tool_loop
 from core.llm import LLMClient
-from core.text import TEHRAN, format_million, normalize_fa, to_fa_digits, to_latin_digits
+from core.text import format_million, format_toman, normalize_fa, to_fa_digits, to_latin_digits
 from torob import store
 from torob import clock
 from torob.agents import advisor
+from torob.agents import call as call_engine
+from torob.agents import followup
 from torob.agents import shops as shops_agent
 from torob.models import Chip, Conditions, Need, RouterOutput, SessionState
 
@@ -29,6 +31,8 @@ _BUDGET = re.compile(rf"(?:تا|زیر|حداکثر|کمتر از|نهایتا|�
 _TIME_WORDS = re.compile(r"^\s*(?:شب|صبح|عصر|ظهر|بعد ?از ?ظهر|ساعت|دقیقه|روز)")
 _CREDIT = re.compile(r"قسط|اقساط|اعتباری|ترب ?پی|اسنپ ?پی|دیجی ?پی")
 _CALL = re.compile(r"بپرس|زنگ بزن|تماس بگیر")
+_ORDINAL = re.compile(r"اولی|دومی|سومی|اولین|دومین|سومین|اول|دوم|سوم")
+_ASK = re.compile(r"کدوم|کدام|کدومش|کدومشون|کجاش|زودتر|دیرتر|کی می ?بنده|تا کی|ارزون ?تر|ارزانتر|نزدیک ?تر")
 _HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
 _STOP = set("یه یک می خوام میخوام خواستم برای با از که رو را و تا زیر میلیون تومن تومان هزار دارم لازم دنبال ای هم "
             "خوب یدونه یکی چی چیه هست باشه بشه قسطی اقساطی حداکثر نهایتا".split())
@@ -51,17 +55,45 @@ def _budget(t: str) -> int | None:
     return None
 
 
+_ARRIVE = re.compile(r"(?:ساعت\s*)?(\d{1,2})(?:[:.](\d{2})|\s*و\s*نیم)?\s*(صبح|ظهر|عصر|شب|بعد ?از ?ظهر)?\s*"
+                     r"(?:میام|می ?رسم|اونجام|میرم|برسم|بیام)")
+
+
+def _arrival(t: str) -> str | None:
+    """«ساعت ۸:۳۰ میام» / «۸ و نیم شب می‌رسم» → "HH:MM". A small hour already past today means the evening
+    (at 18:05, «۸:۳۰» = 20:30)."""
+    m = _ARRIVE.search(t)
+    if not m:
+        return None
+    h = int(m.group(1))
+    mi = int(m.group(2)) if m.group(2) else (30 if "نیم" in m.group(0) else 0)
+    part = m.group(3) or ""
+    if part in ("عصر", "شب") or part.startswith("بعد"):
+        h = h + 12 if h < 12 else h
+    elif not part and h < 12 and clock.now().hour >= h:
+        h += 12
+    if h > 23 or mi > 59:
+        return None
+    return f"{h:02d}:{mi:02d}"
+
+
 def rule_route(text: str) -> RouterOutput:
     """No-model understanding of the common cases. Deliberately simple; never invents numbers."""
     t = to_latin_digits(normalize_fa(text))
     patch: dict = {}
+    arrive = _arrival(t)
+    if arrive:   # «ساعت ۸:۳۰ میام» is a visit condition, not a search for clocks
+        return RouterOutput(intent="refine", conditions_patch={"arrive_at": arrive})
     budget = _budget(t)
     if budget:
         patch["budget_max"] = budget
     if _CREDIT.search(t):
         patch["payment"] = "credit"
     if _CALL.search(t):
-        return RouterOutput(intent="call_shop", conditions_patch=patch)
+        m = _ORDINAL.search(t)
+        return RouterOutput(intent="call_shop", conditions_patch=patch, target=m.group(0) if m else "")
+    if _ASK.search(t) and not budget:
+        return RouterOutput(intent="ask_results", conditions_patch=patch)
     # Numbers outside the budget phrase are specs («۲۰ وات», «۲۰۰۰۰», «۲۵ آمپر») and stay in the query.
     words = [w for w in re.sub(r"[^\w\s]", " ", _BUDGET.sub(" ", t)).split() if w not in _STOP]
     if words and all(w.isdigit() for w in words):
@@ -211,15 +243,87 @@ def _chip_set_conditions(state: SessionState, em: Emitter, args: SetConditionsAr
 class CallShopArgs(DirectTool):
     shop_id: str = Field(max_length=64)
     product_id: str = Field(max_length=64)
+    hold: bool = False
 
 
 @direct("call_shop", CallShopArgs)
 def _chip_call_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iterator[str]:
-    """S6 runs the simulated call; only shops this session was shown, for the selected product."""
+    """Step 4: simulated call to a shown shop for the selected product (S6)."""
     if args.shop_id not in state.call_ok_ids or args.product_id != state.selected_product_id:
         yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
         return
-    yield em.emit("call_start", {"call_id": "pending", "shop_id": args.shop_id, "pending": "S6"})
+    yield from call_shop(state, em, args.shop_id, hold=args.hold)
+
+
+def _find_offer(state: SessionState, shop_id: str):
+    """The shop's current ShopOffer for the selected product, planned against the current conditions."""
+    res = shops_agent.find_shops(state.selected_product_id, state.conditions)
+    for o in res.items + res.more:
+        if o.shop["shop_id"] == shop_id:
+            return o, res
+    product, offers, _ = shops_agent.load_offers(state.selected_product_id)
+    now = clock.now()
+    for o in offers:
+        if o.shop["shop_id"] == shop_id:
+            shops_agent._plan_visit(o, state.conditions, now)
+            return o, res
+    return None, res
+
+
+def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False) -> Iterator[str]:
+    o, res = _find_offer(state, shop_id)
+    if o is None:
+        yield em.emit("error", {"text": "این فروشگاه دیگه این مدل رو نداره."})
+        return
+    now = clock.now()
+    call_id = f"c{len(state.calls) + 1}"
+    plan, result = call_engine.run_call(o, res.product, state.conditions.payment, call_id, want_hold=hold,
+                                        llm=em.llm, session_id=em.session_id)
+    s = o.shop
+    yield em.emit("call_start", {
+        "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']} · شبیه‌سازی",
+        "reasons": "می‌پرسم چون: " + " · ".join(plan.reasons),
+        "real_shop_note": "با این فروشگاه واقعاً تماس گرفته نشد." if s["name_is_real"] else None})
+    yield em.emit("status", {"text": "در حال تماس…", "done": False})
+    for who, text in plan.lines:
+        yield em.emit("call_line", {"call_id": call_id, "who": who, "text": text})
+    label = call_engine.result_label(result)
+    yield em.emit("call_result", {"call_id": call_id, "result": result.as_dict(), "label": label})
+    stock = {"ok": "simulated_confirmed", "unavailable": "simulated_unavailable", "no_answer": "no_answer"}[result.outcome]
+    yield em.emit("card_update", {"block_id": "shops", "shop_id": shop_id, "stock": stock, "label": label,
+                                  "price_change": call_engine.price_change_text(result),
+                                  "location": result.location, "hold_until": result.hold_until,
+                                  "style": "simulated"})
+    state.calls[call_id] = result.as_dict()
+    if result.outcome != "ok":
+        if shop_id not in state.tried_shop_ids:
+            state.tried_shop_ids.append(shop_id)
+        yield from _offer_alternative(state, em, s, result.outcome)
+        return
+    tried = set(state.tried_shop_ids) | {shop_id}
+    backup = next((x for x in res.items + res.more if x.shop["shop_id"] not in tried), None)
+    if not state.plan or state.plan.get("shop_id") == shop_id:
+        state.plan = followup.plan_card(o, res.product, result, backup, now)
+        yield em.emit("plan", {"replace": True, **state.plan})
+    if not hold and result.hold_until is None:
+        chip = followup.call_chip(shop_id, res.product["product_id"], "بپرس نگهش دارن؟", hold=True)
+        yield em.emit("question", {"text": "بپرسم تا رسیدنت نگهش دارن؟", "chips": [chip, Chip(
+            label="نه", kind="direct_call", tool="noop").model_dump()]})
+
+
+def _offer_alternative(state: SessionState, em: Emitter, failed_shop: dict, reason: str) -> Iterator[str]:
+    called = {c["shop_id"] for c in state.calls.values()}   # never send the user back to a shop already called
+    alt = followup.alternative(state.selected_product_id, state.conditions, failed_shop, reason,
+                               set(state.tried_shop_ids) | called, clock.now())
+    if alt is None:
+        yield say(state, em, f"چون {failed_shop['name']} {followup.REASONS[reason]}، گزینه‌ی دیگه‌ای با این شرایط پیدا نکردم.")
+        return
+    if alt["kind"] == "shop" and alt["shop"]["shop_id"] not in state.call_ok_ids:
+        state.call_ok_ids.append(alt["shop"]["shop_id"])
+    if alt["kind"] == "product" and alt["product"]["product_id"] not in state.product_ids:
+        state.product_ids.append(alt["product"]["product_id"])
+    state.remember("assistant", alt["text"])
+    yield em.emit("alternative", alt)
 
 
 @direct("prefer_brand", PreferBrandArgs)
@@ -288,6 +392,11 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
     more = [shops_agent.card(o, res.product, state.conditions, now) for o in res.more[:20]]
     state.call_ok_ids = [c["shop_id"] for c in cards + more]   # shown as having it (S6 calls only these)
     state.shop_ids = state.call_ok_ids + [s["shop_id"] for s in res.category_only]
+    state.shops_shown = [{
+        "shop_id": o.shop["shop_id"], "name": o.shop["name"], "rank": i + 1, "price_min": o.price_min,
+        "price_age": shops_agent.price_line(o, now)["age"], "minutes": o.minutes, "open_state": o.open_state,
+        "closes": o.closes.strftime("%H:%M") if o.closes else None, "credit": [p for p, _ in o.payments],
+        "where": shops_agent.where_line(o.shop)} for i, o in enumerate(res.items)]
     state.last_block_kind = "shops"
     c = res.counts
     where = "نزدیکت" if state.conditions.radius_km else "در تهران"
@@ -311,6 +420,30 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
     })
     if not cards:
         yield say(state, em, res.notes[0] if res.notes else "نزدیکت فروشنده‌ای برای این مدل ثبت نشده.")
+    if state.plan and state.plan.get("product_id") == state.selected_product_id:
+        yield from _recheck_plan(state, em)
+
+
+def _recheck_plan(state: SessionState, em: Emitter) -> Iterator[str]:
+    """Conditions changed (e.g. «ساعت ۸:۳۰ میام»): is the plan's shop still open when you'd arrive? (R2, Scene 8)"""
+    o, _ = _find_offer(state, state.plan["shop_id"])
+    if o is None:
+        return
+    now = clock.now()
+    state.plan["dataset"]["visit"] = shops_agent.visit_line(o, now)
+    state.plan["arrival"] = o.arrival.strftime("%H:%M") if o.arrival else None
+    state.plan["open_at_arrival"] = o.open_state
+    if o.open_state == "no":
+        state.plan["status"] = "closed_at_arrival"
+        called = {c["shop_id"] for c in state.calls.values()}
+        alt = followup.alternative(state.selected_product_id, state.conditions, o.shop, "closed",
+                                   set(state.tried_shop_ids) | called | {o.shop["shop_id"]}, now)
+        state.plan["switch_to"] = alt
+        if alt and alt["kind"] == "shop" and alt["shop"]["shop_id"] not in state.call_ok_ids:
+            state.call_ok_ids.append(alt["shop"]["shop_id"])
+    else:
+        state.plan["status"], state.plan["switch_to"] = "ok", None
+    yield em.emit("plan", {"replace": True, **state.plan})
 
 
 def rerun_latest(state: SessionState, em: Emitter) -> Iterator[str]:
@@ -356,14 +489,93 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield from rerun_latest(state, em)
         else:
             yield say(state, em, out.message or "شرایط رو عوض کردم.")
+    elif out.intent == "call_shop":
+        shop = _resolve_shop(state, out.target or text)
+        if shop is None:
+            yield say(state, em, "اول فروشنده‌ها رو پیدا کنیم؛ بعد برات زنگ می‌زنم.")
+        else:   # the user asked («بپرس») — that is the permission rule 5 needs
+            yield from call_shop(state, em, shop["shop_id"], hold="نگه" in normalize_fa(text))
+    elif out.intent == "ask_results":
+        yield from answer_results(state, em, text)
     else:
-        # call_shop / ask_results land in S3–S6
         yield say(state, em, out.message or "بگو دنبال چه چیزی هستی تا برات پیدا کنم.")
+
+
+_ORDINAL_INDEX = {"اولی": 0, "اولین": 0, "اول": 0, "دومی": 1, "دومین": 1, "دوم": 1, "سومی": 2, "سومین": 2, "سوم": 2}
+
+
+def _resolve_shop(state: SessionState, target: str) -> dict | None:
+    """«اولی/دومی/سومی», or part of a shown shop's name; else the first shown shop."""
+    if not state.shops_shown:
+        return None
+    t = normalize_fa(target)
+    for word, i in _ORDINAL_INDEX.items():
+        if re.search(rf"(?<![ء-ی]){word}(?![ء-ی])", t) and i < len(state.shops_shown):
+            return state.shops_shown[i]
+    for s in state.shops_shown:
+        name = normalize_fa(s["name"])
+        if name and (name in t or any(len(w) > 2 and w in t for w in name.split())):
+            return s
+    return state.shops_shown[0]
+
+
+def answer_results(state: SessionState, em: Emitter, text: str) -> Iterator[str]:
+    """Questions about the shown shops. Numbers come only from their facts; with an LLM, a short tool loop over the
+    same facts; without one, rules for the common questions."""
+    shown = state.shops_shown
+    if not shown:
+        yield say(state, em, "هنوز فروشگاهی نشون ندادم؛ اول بگو چی لازم داری.")
+        return
+    if em.llm is not None and getattr(em.llm, "enabled", False):
+        tool = Tool("shown_shops", "facts about the shops currently shown to the user", {"type": "object", "properties": {}},
+                    lambda: {"shops": shown})
+        msgs = [{"role": "system", "content": "به فارسی محاوره‌ای و کوتاه جواب بده. فقط از خروجی ابزار shown_shops عدد و "
+                                              "ساعت نقل کن؛ چیزی که نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودی تأییدشده ندان."},
+                {"role": "user", "content": text}]
+        for chunk in tool_loop(em.llm, msgs, [tool], em, max_steps=3, max_tokens=300):
+            yield chunk
+        state.remember("assistant", em.events[-1][1].get("text", ""))
+        return
+    yield say(state, em, rule_answer(shown, text))
+
+
+def rule_answer(shown: list[dict], text: str) -> str:
+    t = normalize_fa(text)
+    name = lambda s: f"«{s['name']}»"
+    if re.search(r"زودتر|دیرتر|می ?بنده|تا کی|بسته|باز", t):
+        known = [s for s in shown if s["closes"]]
+        unknown = [s for s in shown if not s["closes"]]
+        if not known:
+            return "ساعت بسته شدن هیچ‌کدوم ثبت نشده؛ می‌تونم بپرسم."
+        early, late = min(known, key=lambda s: s["closes"]), max(known, key=lambda s: s["closes"])
+        parts = [f"{name(early)} زودتر می‌بنده ({to_fa_digits(early['closes'])})"]
+        if late is not early:
+            parts.append(f"{name(late)} تا {to_fa_digits(late['closes'])} بازه")
+        if unknown:
+            parts.append("ساعت " + "، ".join(name(s) for s in unknown) + " ثبت نشده — بپرسم؟")
+        return "؛ ".join(parts) + "."
+    if re.search(r"ارزون|ارزان|قیمت", t):
+        priced = [s for s in shown if s["price_min"]]
+        if not priced:
+            return "قیمت هیچ‌کدوم ثبت نشده؛ می‌تونم بپرسم."
+        c = min(priced, key=lambda s: s["price_min"])
+        return f"کمترین قیمت ثبت‌شده مال {name(c)}ه: {format_toman(c['price_min'])} ({c['price_age']}). موجودیش تأیید نشده."
+    if re.search(r"نزدیک|دور|پیاده|دقیقه", t):
+        n = min(shown, key=lambda s: s["minutes"])
+        return f"{name(n)} از همه نزدیک‌تره، حدود {to_fa_digits(n['minutes'])} دقیقه (تخمینی)."
+    if re.search(r"قسط|اقساط|ترب ?پی|اعتبار", t):
+        cr = [s for s in shown if s["credit"]]
+        if not cr:
+            return "هیچ‌کدوم از این‌ها شرایط قسطی ثبت نکرده."
+        return "قسطی: " + "؛ ".join(f"{name(s)} ({'، '.join(s['credit'])})" for s in cr) + "."
+    first = shown[0]
+    return f"بهترین گزینه طبق قیمت، تازگی و فاصله {name(first)}ه ({first['where']}). سؤال خاصی درباره‌ی این‌ها داری؟"
 
 
 def run_turn(llm: LLMClient, state: SessionState, em: Emitter, *, text: str | None = None,
              chip: Chip | None = None) -> Iterator[str]:
     """One user turn → SSE strings, always ending with `done` (unless the client disconnected)."""
+    em.llm = llm
     try:
         yield from _turn(llm, state, em, text, chip)
     except Exception as e:   # never leave the client hanging; the detail goes to the event log only

@@ -1,5 +1,6 @@
 """Torob in-store shopping agent — web app (one origin: UI, API and admin; spec D19)."""
 
+import os
 import sqlite3
 import threading
 import time
@@ -132,9 +133,14 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
         _busy[sid] = time.monotonic()
     em = Emitter(sid, sink=adb.log_event)
 
+    delay = float(os.environ.get("CALL_LINE_DELAY", "0.7"))
+
     def stream():
         try:
-            yield from run_turn(llm(), state, em, text=text, chip=chip)
+            for chunk in run_turn(llm(), state, em, text=text, chip=chip):
+                yield chunk
+                if delay and chunk.startswith("event: call_line"):
+                    time.sleep(delay)   # the call reads like a call; the facts are already decided
         finally:
             adb.save(sid, state)   # also when the client disconnects mid-stream
             with _busy_lock:

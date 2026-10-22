@@ -64,6 +64,7 @@ class RouterOutput(BaseModel):
     intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "other"] = "other"
     need: Need | None = None
     conditions_patch: dict = {}
+    target: str = Field("", max_length=80)   # call_shop: which shown shop («اولی», «دومی», or part of its name)
     message: str = ""
 
 
@@ -74,6 +75,8 @@ class SessionState(BaseModel):
     selected_product_id: str | None = None
     shop_ids: list[str] = []             # every shop shown for the selected product (incl. category-only)
     call_ok_ids: list[str] = []          # shops shown as having it — the only ones call_shop accepts
+    shops_shown: list[dict] = []         # compact facts of the shown shops (ask_results answers from these)
+    tried_shop_ids: list[str] = []       # called and failed (no answer / unavailable): alternatives skip them
     last_block_kind: Literal["none", "products", "shops"] = "none"
     calls: dict[str, dict] = {}          # call_id -> CallResult (S6)
     plan: dict | None = None             # «برنامه‌ی خرید» card (S6)
