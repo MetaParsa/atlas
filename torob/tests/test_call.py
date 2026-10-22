@@ -148,8 +148,9 @@ def test_full_flow_call_plan_alternative_recheck():
     ev = turn(s, text="ساعت 8:30 میام")
     plan = dict(ev).get("plan")
     assert s.conditions.arrive_at.strftime("%H:%M") == "20:30" and plan
-    if plan["status"] == "closed_at_arrival":
-        assert plan["switch_to"]["reason"].endswith("تا برسی بسته‌ست")
+    assert plan["status"] == "closed_at_arrival"                     # shop 1 closes at 20:00
+    assert plan["switch_to"]["reason"].endswith("تا برسی بسته‌ست")
+    assert plan["switch_to"]["chip"]["args"].get("hold") is True
 
 
 def test_typed_call_without_shops_asks_first():

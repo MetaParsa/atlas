@@ -165,7 +165,7 @@ def plan_questions(o: ShopOffer, product: dict, payment_filter: str, now: dateti
 _GREET = ["سلام، وقت بخیر.", "سلام، خسته نباشید."]
 _YES = ["آره داریم.", "بله، موجوده.", "آره هست، بیاید."]
 _NO = ["نه متأسفانه، تموم کردیم.", "فعلاً نداریم.", "نه، این مدل الان موجود نیست."]
-_DONT_KNOW_HOURS = ["ساعتمون ثابت نیست؛ قبل اومدن یه زنگ دیگه بزنید."]   # no invented hours
+_DONT_KNOW_HOURS = ["ساعت دقیقش رو الان نمی‌تونم بگم؛ قبل اومدن یه زنگ دیگه بزنید."]   # no invented hours
 
 
 def _price_words(p: int) -> str:
@@ -191,12 +191,12 @@ def script(plan: CallPlan, truth: Truth, product_title: str, rng: random.Random)
         answers.append(f"تا {to_fa_digits(truth.closes_today)} هستیم." if truth.closes_today else rng.choice(_DONT_KNOW_HOURS))
     if "credit" in plan.questions:
         asks.append("قسطی یا ترب‌پی دارید؟")
-        answers.append(("بله، " + " و ".join(truth.credit) + " داریم.") if truth.credit else "نه، فقط نقدی و کارت.")
+        answers.append(("بله، " + " و ".join(truth.credit) + " داریم.") if truth.credit else "نه، قسطی نداریم.")
     if "location" in plan.questions:
         asks.append("دقیقاً کجای پاساژید؟")
-        answers.append(f"{truth.location} هستیم." if truth.location else "توی پاساژ بپرسید، همه می‌شناسن.")
+        answers.append(f"{truth.location} هستیم." if truth.location else "دقیقش رو از اینجا نمی‌تونم بگم؛ اومدید بپرسید.")
     if "hold" in plan.questions:
-        asks.append("می‌شه تا یه ساعت دیگه نگهش دارید؟")
+        asks.append("تا موقع رسیدنم نگهش می‌دارید؟")
         answers.append(f"باشه، تا {to_fa_digits(truth.hold_until)} نگه می‌دارم." if truth.hold_until
                        else "نمی‌تونم قول بدم، زودتر بیاید.")
     if asks:
