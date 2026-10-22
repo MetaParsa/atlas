@@ -116,7 +116,7 @@ def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) 
     """History (previous turns only) + this message → RouterOutput. Any failure → rule_route."""
     messages = [{"role": "system", "content": ROUTER_PROMPT}, *state.history[-6:], {"role": "user", "content": text}]
     try:
-        res = llm.complete("router", messages, session_id=session_id, max_tokens=300, json_mode=True)
+        res = llm.complete("router", messages, session_id=session_id, max_tokens=900, json_mode=True)   # Persian JSON is token-heavy
         return RouterOutput.model_validate(res.json())
     except Exception:   # LLM error, budget spent, bad JSON, schema mismatch: the app keeps working on rules
         return rule_route(text)

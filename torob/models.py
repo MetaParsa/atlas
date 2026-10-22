@@ -49,6 +49,15 @@ class Need(BaseModel):
     named_product: str | None = None     # the user named a model → skip to shops (R7)
     missing_info: list[str] = []
 
+    @model_validator(mode="before")
+    @classmethod
+    def _nulls_are_empty(cls, v):
+        """Models write `null` for «none»; an empty list/string means the same here and must not void the answer."""
+        if isinstance(v, dict):
+            v = {k: x for k, x in v.items() if not (x is None and k in ("product_type", "keywords", "category_hints",
+                                                                      "must_have", "brand_pref", "missing_info"))}
+        return v
+
 
 class Chip(BaseModel):
     """An answer chip. `say` sends `value` as the user's message; `direct_call` runs `tool(args)` with no LLM (A4)."""
@@ -66,6 +75,13 @@ class RouterOutput(BaseModel):
     conditions_patch: dict = {}
     target: str = Field("", max_length=80)   # call_shop: which shown shop («اولی», «دومی», or part of its name)
     message: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _nulls_are_empty(cls, v):
+        if isinstance(v, dict):
+            v = {k: x for k, x in v.items() if not (x is None and k in ("conditions_patch", "target", "message"))}
+        return v
 
 
 class SessionState(BaseModel):

@@ -92,3 +92,10 @@ def test_chat_endpoint_streams_and_persists(tmp_path, monkeypatch):
     r2 = c.post("/api/chat", json={"text": "تا ۲ میلیون"})
     assert _adb.load(sid)[1].conditions.budget_max == 2_000_000 and r2.cookies.get("sid", sid) == sid
     assert c.get("/health").json()["llm_enabled"] is False
+
+
+def test_router_output_accepts_nulls_for_empty_fields():
+    from torob.models import RouterOutput
+    out = RouterOutput.model_validate({"intent": "need", "message": None, "conditions_patch": None,
+                                       "need": {"product_type": "هندزفری", "brand_pref": None, "keywords": None}})
+    assert out.need.brand_pref == [] and out.need.keywords == [] and out.message == "" and out.conditions_patch == {}
