@@ -171,12 +171,41 @@ async function post(url, body) {
   return true;
 }
 
+// --- start screen suggestions: recent searches (kept only in this browser), or examples the first time ------------
+const EXAMPLES = ["هندزفری بلوتوثی تا ۳ میلیون", "شارژر اصل آیفون", "گوشی سامسونگ S25 FE قسطی"];
+const RECENT_KEY = "torob.recent", RECENT_MAX = 5;
+function recentSearches() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((s) => typeof s === "string" && s).slice(0, RECENT_MAX) : [];
+  } catch (_) { return []; }
+}
+function saveRecent(list) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (_) {} }
+function remember(text) {
+  const t = text.trim().replace(/\s+/g, " ").slice(0, 120);
+  saveRecent([t, ...recentSearches().filter((s) => s !== t)].slice(0, RECENT_MAX));
+}
+function renderSuggestions() {
+  const box = $("#suggest");
+  if (!box) return;
+  const recent = recentSearches();
+  box.replaceChildren(...(recent.length ? [
+    el("div", { class: "suggest-h" }, el("span", { text: "جست‌وجوهای اخیرت" }),
+      el("button", { type: "button", class: "ghost", text: "پاک کردن", onclick: () => { saveRecent([]); renderSuggestions(); } })),
+    el("div", { class: "recent" }, recent.map((t) => el("button", { type: "button", onclick: () => say(t) }, icon("clock"), el("span", { text: t })))),
+  ] : [
+    el("div", { class: "suggest-h center" }, el("span", { text: "مثلاً بگو" })),
+    el("div", { class: "chips" }, EXAMPLES.map((t) => el("button", { type: "button", class: "chip", text: t, onclick: () => say(t) }))),
+  ]));
+}
+
 function showError(text) { leaveStart(); stream.append(el("div", { class: "error", text })); oops(); }
 function leaveStart() { $("#start")?.remove(); $("#radish-dock").hidden = false; }
 function oops() { if (turn) turn.failed = true; Radish.set("oops"); }
 
 function say(text) {
   if (!text.trim() || busy) return false;
+  if ($("#start")) remember(text);            // a search started from the start screen joins the recents
   leaveStart();
   stream.append(el("div", { class: "bubble user", text }));
   post("/api/chat", { text });
@@ -536,6 +565,7 @@ $("#composer").addEventListener("submit", (e) => {
 });
 $("#text").addEventListener("input", (e) => { if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
 document.querySelectorAll("canvas.radish").forEach((c) => Radish.attach(c));
+renderSuggestions();
 Radish.set("happy");                          // says hello, then settles
 Radish.set("idle");
 document.addEventListener("click", (e) => {
