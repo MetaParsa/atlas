@@ -100,3 +100,10 @@ def test_page_uses_self_hosted_font_only():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     css = (WEB / "app.css").read_text(encoding="utf-8")
     assert "fonts.googleapis" not in html + css and (WEB / "fonts" / "Vazirmatn-wght.woff2").exists()
+
+
+def test_assets_are_versioned_and_revalidated(client):
+    page = client.get("/").text
+    assert "/static/app.css?v=" in page and "/static/app.js?v=" in page
+    assert client.get("/static/app.css").headers["cache-control"] == "no-cache"
+    assert "immutable" in client.get("/static/fonts/Vazirmatn-wght.woff2").headers["cache-control"]

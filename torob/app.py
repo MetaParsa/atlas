@@ -120,12 +120,35 @@ class ChatIn(BaseModel):
 
 
 WEB = Path(__file__).parent / "web"
-app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
-@app.get("/", response_class=FileResponse)
+class _Static(StaticFiles):
+    """CSS/JS are revalidated on every load (cheap 304 via ETag); the font is immutable.
+    Without a Cache-Control header, browsers and the CDN kept a stale app.css after a deploy."""
+    async def get_response(self, path, scope):
+        r = await super().get_response(path, scope)
+        r.headers["Cache-Control"] = "public, max-age=31536000, immutable" if path.replace("\\", "/").startswith("fonts/") else "no-cache"
+        return r
+
+
+app.mount("/static", _Static(directory=WEB), name="static")
+
+
+@lru_cache(maxsize=1)
+def _index_html(stamp: tuple) -> str:
+    """index.html with ?v=<content hash> on app.css/app.js, so a new deploy is a new URL for every cache."""
+    import hashlib
+    page = (WEB / "index.html").read_text(encoding="utf-8")
+    for name in ("app.css", "app.js"):
+        v = hashlib.sha256((WEB / name).read_bytes()).hexdigest()[:10]
+        page = page.replace(f"/static/{name}", f"/static/{name}?v={v}")
+    return page
+
+
+@app.get("/", response_class=HTMLResponse)
 def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+    stamp = tuple((WEB / n).stat().st_mtime_ns for n in ("index.html", "app.css", "app.js"))
+    return HTMLResponse(_index_html(stamp), headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/state")
