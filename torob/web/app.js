@@ -286,7 +286,7 @@ function productBlock(d) {
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (!items.length) return block;
   block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
-    el("span", { text: `${fa(items.length)} مدل، بکش برای بقیه` })));
+    el("span", {}, `${fa(items.length)} مدل`, el("span", { class: "hint", text: "، بکش برای بقیه" }))));
   const row = el("div", { class: "row" });
   for (const p of items) {
     const scope = p.price_scope === "area" ? "نزدیکت" : "در تهران";
@@ -423,7 +423,8 @@ function renderPlan(p, quiet = false) {
   const bar = $("#plan-bar");
   bar.hidden = false;
   bar.replaceChildren(icon("list"), el("span", { text: `برنامه‌ی خرید: ${p.name}، ${p.dataset.visit}` + (p.status === "closed_at_arrival" ? " — تا برسی بسته‌ست" : "") }));
-  if (!quiet) stream.append(el("div", { class: "status", text: "برنامه‌ی خرید بالای صفحه به‌روز شد ↑" }));
+  const wide = matchMedia("(min-width: 1024px)").matches;   // desktop pins the plan beside the chat
+  if (!quiet) stream.append(el("div", { class: "status", text: wide ? "برنامه‌ی خرید کنار صفحه به‌روز شد" : "برنامه‌ی خرید بالای صفحه به‌روز شد ↑" }));
   measureSticky();
 }
 
