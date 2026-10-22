@@ -47,7 +47,7 @@
     return el("div", { class: "tm-hub" + (i === 0 ? " top" : "") }, i === 0 ? el("b", { text: "بورس" }) : null,
       el("span", { text: `${b.name} · ${fa(b.shops)}` }));
   }
-  function addHubs(layer, hubs, onClick) {
+  function addHubs(map, layer, hubs, onClick) {
     const max = Math.max(...hubs.map((b) => b.shops), 1);
     const labels = hubs.map((b, i) => {
       L.circle([b.lat, b.lon], { radius: 70 + 160 * Math.sqrt(b.shops / max), className: "tm-hubzone" + (i === 0 ? " top" : ""),
@@ -57,7 +57,6 @@
       return mk;
     });
     // Hubs are often a few doors apart (Aladdin, Charsou, Bozorgmehr): stack labels that would cover each other.
-    const map = layer instanceof L.Map ? layer : layer._map;
     const declutter = () => {
       const placed = [];
       for (const mk of labels) {
@@ -71,7 +70,8 @@
         placed.push({ x: p.x, y: p.y + dy, w });
       }
     };
-    if (map) { map.on("zoomend", declutter); setTimeout(declutter, 0); }
+    map.on("zoomend", declutter);
+    setTimeout(declutter, 0);   // after the caller fits the view
   }
   // Shops in one passage share coordinates: one pin with a count, opened as a list (floor, price, open).
   function groupByBuilding(points) {
@@ -185,7 +185,7 @@
       v.layer.clearLayers(); hidePanel();
       meMarker(c).addTo(v.layer);
       if (d.radius_km) radius(c, d.radius_km).addTo(v.layer);
-      if (st.hubs && d.category?.buildings?.length) addHubs(v.layer, d.category.buildings);
+      if (st.hubs && d.category?.buildings?.length) addHubs(v.map, v.layer, d.category.buildings);
       const pts = d.points.filter((p) => (!st.open || OPEN[p.open] === "open") && (!st.credit || p.credit) && (!st.near || p.in_radius));
       const { groups, singles } = groupByBuilding(pts);
       singles.forEach((p) => L.marker([p.lat, p.lon], { icon: divIcon(pricePin(p)), zIndexOffset: p.rank ? 1000 - p.rank : 0,
@@ -257,7 +257,7 @@
     d.dots.forEach(([lat, lon]) => L.circleMarker([lat, lon], { renderer, radius: 3, stroke: false, fillColor: dotColor, fillOpacity: 0.45,
       interactive: false }).addTo(v.layer));
     if (cond?.center) meMarker(cond.center).addTo(v.layer);
-    addHubs(v.layer, d.buildings, (b) => hubPanel(b, d));
+    addHubs(v.map, v.layer, d.buildings, (b) => hubPanel(b, d));
     v.sub.textContent = `${fa(d.total)} فروشنده‌ی حضوری در تهران` + (d.buildings[0] ? ` · بیشترینش ${d.buildings[0].name}` : "");
     legendFor("hub");
     v.tools.append(toolButton("list", "همه", () => fit(v.map, d.dots, 15)));
@@ -306,7 +306,7 @@
       const renderer = L.canvas({ padding: 0.2 }), color = css("--blue") || "#007aff";
       dots.forEach(([lat, lon]) => L.circleMarker([lat, lon], { renderer, radius: 2.5, stroke: false, fillColor: color, fillOpacity: 0.4, interactive: false }).addTo(m));
     }
-    if (hubs.length) { addHubs(m, hubs.slice(0, 3)); hubs.slice(0, 3).forEach((b) => latlngs.push([b.lat, b.lon])); }
+    if (hubs.length) { addHubs(m, m, hubs.slice(0, 3)); hubs.slice(0, 3).forEach((b) => latlngs.push([b.lat, b.lon])); }
     const { groups, singles } = groupByBuilding(points);
     singles.forEach((p) => { L.marker([p.lat, p.lon], { icon: divIcon(pricePin(p)), interactive: false, zIndexOffset: p.rank ? 1000 - p.rank : 0 }).addTo(m); latlngs.push([p.lat, p.lon]); });
     groups.forEach((g) => { L.marker([g.lat, g.lon], { icon: divIcon(groupPin(g)), interactive: false, zIndexOffset: 800 }).addTo(m); latlngs.push([g.lat, g.lon]); });
