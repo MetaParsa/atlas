@@ -11,6 +11,7 @@ const fa = (v) => String(v).replace(/\d/g, (d) => FA[d]);
 const toLatin = (s) => String(s).replace(/[۰-۹]/g, (d) => FA.indexOf(d)).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[٫,]/g, ".");
 const TIMEOUT_MS = 90_000;
 let cond = null, busy = false, turn = null, hasResults = false;
+const callNames = {};
 
 function el(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
@@ -25,6 +26,38 @@ function el(tag, attrs = {}, ...kids) {
   return n;
 }
 const simTag = () => el("span", { class: "sim-tag", text: "شبیه‌سازی" });
+
+// Inline stroke icons, built as DOM nodes (no HTML parsing).
+const ICONS = {
+  pin: ["M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z", "c12,10,2.5"],
+  clock: ["c12,12,9", "M12 7v5l3 2"],
+  box: ["M21 8l-9-5-9 5 9 5 9-5z", "M3 8v8l9 5 9-5V8", "M12 13v8"],
+  phone: ["M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"],
+  store: ["M3 9l1.5-5h15L21 9", "M4 9v11h16V9", "M3 9h18", "M9 20v-6h6v6"],
+  nav: ["M3 11l19-9-9 19-2-8-8-2z"],
+  check: ["M5 12l5 5L20 7"],
+  tag: ["M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z", "c7.5,7.5,1.5"],
+  list: ["M8 6h13M8 12h13M8 18h13", "M3.5 6h.01M3.5 12h.01M3.5 18h.01"],
+  image: ["M3 5h18v14H3z", "c9,10,2", "M21 16l-5-5-9 8"],
+  refresh: ["M21 12a9 9 0 1 1-3-6.7L21 8", "M21 3v5h-5"],
+};
+function icon(name, cls) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  if (cls) svg.setAttribute("class", cls);
+  for (const d of ICONS[name] || []) {
+    let n;
+    if (d.startsWith("c")) {
+      const [cx, cy, r] = d.slice(1).split(",");
+      n = document.createElementNS(NS, "circle");
+      n.setAttribute("cx", cx); n.setAttribute("cy", cy); n.setAttribute("r", r);
+    } else { n = document.createElementNS(NS, "path"); n.setAttribute("d", d); }
+    svg.append(n);
+  }
+  return svg;
+}
 const scrollEnd = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 
 // --- talking to the server ---------------------------------------------------------------------------------------
@@ -96,8 +129,9 @@ function chip(c, bubble = c.label) {
     post("/api/chat", { chip: c });
   } else say(c.value || c.label);
 }
-function chipButton(c, cls = "chip", bubble) {
-  return el("button", { type: "button", class: cls, text: c.label, onclick: () => chip(c, bubble ?? c.label) });
+function chipButton(c, cls = "chip", bubble, ic) {
+  return el("button", { type: "button", class: cls, onclick: () => chip(c, bubble ?? c.label) },
+    ic ? icon(ic) : null, el("span", { text: c.label }));
 }
 function refine(patch) { if (!busy) post("/api/refine", { conditions: patch }); }
 
@@ -119,19 +153,21 @@ const handlers = {
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); },
   shop_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-shops", shopBlock(d)); },
   call_start(d) {
+    callNames[d.call_id] = d.shop_name || "فروشنده";
     stream.append(el("div", { class: "call sim", id: `call-${d.call_id}` },
-      el("div", { class: "head" }, d.title, simTag()),
+      el("div", { class: "head" }, el("span", { class: "ring" }, icon("phone")), el("span", {}, d.title, simTag())),
       el("div", { class: "why", text: d.reasons }),
       d.real_shop_note ? el("div", { class: "note", text: d.real_shop_note }) : null));
   },
   call_line(d) {
-    $(`#call-${d.call_id}`)?.append(el("div", { class: `line ${d.who}`, text: d.text }));
+    const who = d.who === "shop" ? callNames[d.call_id] || "فروشنده" : "دستیار";
+    $(`#call-${d.call_id}`)?.append(el("div", { class: `line ${d.who}` }, el("span", { class: "who", text: who }), d.text));
     scrollEnd();
   },
   call_result(d) {
     const box = $(`#call-${d.call_id}`);
     if (turn.status) { turn.status.remove(); turn.status = null; }   // «در حال تماس…» is over
-    box?.append(el("div", { class: "result", text: d.label }));
+    box?.append(el("div", { class: "result" }, icon("check"), el("span", { text: d.label })));
   },
   card_update(d) { updateShopCard(d); },
   plan(d) { renderPlan(d); },
@@ -139,6 +175,7 @@ const handlers = {
     stream.append(el("div", { class: "card alt" },
       el("div", { class: d.simulated ? "simbox sim" : "" }, el("span", { text: d.text }), d.simulated ? simTag() : null),
       d.chip ? el("div", { class: "chips start-align" }, chipButton(d.chip)) : null));
+    scrollEnd();
   },
   done() { turn.sawDone = true; if (turn.status) turn.status.classList.remove("busy"); },
 };
@@ -164,75 +201,112 @@ function priceRange(min, max) {
   if (!min) return "قیمت ثبت نشده";
   return min === max ? money(min) : `${money(min)} تا ${money(max)}`;
 }
+const shortTitle = (t) => t.split("|")[0].trim();
+
+function productImage(p) {
+  const box = el("div", { class: "pimg" });
+  const ph = () => icon("image", "ph");
+  box.append(p.image ? el("img", { src: p.image, alt: "", loading: "lazy", referrerpolicy: "no-referrer",
+    onerror: (e) => e.target.replaceWith(ph()) }) : ph());
+  if (p.role_label) box.append(el("span", { class: `role ${p.role || ""}` }, p.role === "best_value" ? icon("check") : null, p.role_label));
+  return box;
+}
 
 function productBlock(d) {
   const items = d.items || [];
   const block = el("section");
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (!items.length) return block;
+  block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
+    el("span", { text: `${fa(items.length)} مدل، بکش برای بقیه` })));
   const row = el("div", { class: "row" });
   for (const p of items) {
-    const img = p.image ? el("img", { class: "img", src: p.image, alt: "", loading: "lazy", referrerpolicy: "no-referrer",
-      onerror: (e) => e.target.replaceWith(el("div", { class: "img" })) }) : el("div", { class: "img" });
-    row.append(el("article", { class: "card pcard" }, img,
-      el("div", {}, el("span", { class: "tag", text: p.role_label })),
-      el("div", { class: "title", text: p.title }),
-      el("div", { class: "meta" }, `قیمت ثبت‌شده ${p.price_scope === "area" ? "نزدیکت" : "در تهران"}: `,
-        el("bdi", { text: priceRange(p.price_min, p.price_max) })),
-      p.spec_lines?.length ? el("ul", { class: "specs" }, p.spec_lines.map((s) => el("li", { text: s }))) : null,
-      el("div", { class: "why", text: "چرا: " + p.why }),
-      p.button ? chipButton(p.button, "primary", `فروشنده‌های «${p.title.split("|")[0].trim()}»`) : null));
+    const scope = p.price_scope === "area" ? "نزدیکت" : "در تهران";
+    const sellers = p.price_scope === "area" ? p.sellers_in_area : p.sellers_total;
+    row.append(el("article", { class: "card pcard" }, productImage(p),
+      el("div", { class: "pbody" },
+        el("div", { class: "title", text: p.title }),
+        p.price_min ? el("div", { class: "price-big" }, el("small", { text: "از " }), el("bdi", { text: money(p.price_min) }), el("small", { text: " تومان" }))
+                    : el("div", { class: "price-big" }, el("small", { text: "قیمت ثبت نشده" })),
+        el("div", { class: "meta" }, p.price_max && p.price_max !== p.price_min ? el("bdi", { text: `تا ${money(p.price_max)}، ` }) : null,
+          `قیمت ثبت‌شده ${scope}`),
+        sellers ? el("div", {}, el("span", { class: "pill blue" }, icon("store"), `${fa(sellers)} فروشنده ${scope}`)) : null,
+        p.over_budget_pct ? el("div", { class: "over", text: `${fa(p.over_budget_pct)}٪ بالاتر از بودجه` }) : null,
+        p.spec_lines?.length ? el("ul", { class: "specs" }, p.spec_lines.map((s) => el("li", { text: s, title: s }))) : null,
+        el("div", { class: "why", text: "چرا: " + p.why }),
+        p.button ? chipButton(p.button, "btn blue", `فروشنده‌های «${shortTitle(p.title)}»`, "store") : null)));
   }
   block.append(row);
   if (d.compare_rows?.length) {
     const t = el("table", { class: "compare" },
       el("tr", {}, el("th", { text: "" }), items.map((p) => el("th", { text: p.role_label }))),
       d.compare_rows.map((r) => el("tr", {}, el("td", { text: r.key }), r.values.map((v) => el("td", { text: v })))));
-    block.append(el("details", {}, el("summary", { text: "مقایسه‌ی مشخصات" }), t));
+    block.append(el("details", { class: "compare-wrap" }, el("summary", { text: "مقایسه‌ی مشخصات" }), t));
   }
   return block;
 }
 
 // --- shops (steps 2–3) --------------------------------------------------------------------------------------------
 
+function shopPrice(pr) {
+  const box = el("div", { class: "sprice" });
+  if (pr.min) {
+    box.append(el("div", { class: "amt" }, el("bdi", { text: money(pr.min) }), el("small", { text: " تومان" })));
+    if (pr.max && pr.max !== pr.min) box.append(el("div", { class: "meta" }, el("bdi", { text: `تا ${money(pr.max)}` })));
+    if (pr.per_metre) box.append(el("div", { class: "meta", text: "قیمت متری" }));
+  } else box.append(el("div", { class: "amt" }, el("small", { text: pr.text })));
+  box.append(el("div", { class: "age" + (pr.old ? " old" : "") }, el("bdi", { text: pr.age }), pr.note ? `، ${pr.note}` : null));
+  return box;
+}
+
+function line(ic, text, cls) {
+  return el("div", { class: "ln" + (cls ? " " + cls : "") }, icon(ic), el("span", { class: cls?.startsWith("open-") ? "st" : null, text }));
+}
+
 function shopCard(s, compact = false) {
-  const card = el("article", { class: "card scard", "data-shop-id": s.shop_id },
-    el("div", { class: "name", text: s.name }),
+  const open = s.visit.open_at_arrival === "yes" ? "open-yes" : s.visit.open_at_arrival === "no" ? "open-no" : "";
+  const card = el("article", { class: "card scard" + (compact ? " compact" : ""), "data-shop-id": s.shop_id },
+    el("div", { class: "shead" },
+      compact ? null : el("span", { class: "avatar" }, icon("store")),
+      el("div", { class: "sname" }, el("div", { class: "name", text: s.name }), s.area ? el("div", { class: "meta", text: s.area }) : null),
+      shopPrice(s.price)),
     el("div", { class: "lines" },
-      el("div", { class: "where", text: s.where }),
-      el("div", { class: "price" }, el("bdi", { text: s.price.text }), "، ", el("bdi", { class: "age", text: s.price.age }),
-        s.price.note ? el("span", { class: "note" }, "، ", el("bdi", { text: s.price.note })) : null),
-      el("div", { class: "stock", text: s.stock_label }),
-      el("div", { class: "visit", text: s.visit.text })));
-  if (!compact && s.reasons?.length) card.append(el("div", { class: "badges" }, s.reasons.map((r) => el("span", { class: "tag", text: r }))));
+      line("pin", s.where, "where"),
+      line("clock", s.visit.text, open),
+      compact ? null : line("box", s.stock_label, "stock")));
+  if (!compact && s.reasons?.length) {
+    card.append(el("div", { class: "badges" }, s.reasons.map((r, i) =>
+      el("span", { class: "pill" + (s.badges?.includes("credit") && r === "قسطی" ? " green" : "") }, i === 0 ? icon("tag") : null, r))));
+  }
   if (!compact) {
     const det = s.details;
-    card.append(el("details", {}, el("summary", { text: "جزئیات" }),
+    card.append(el("details", {}, el("summary", { text: "جزئیات فروشنده" }),
       el("div", { class: "meta", text: det.payments.join("، ") }),
       el("div", { class: "meta", text: det.warranty }),
       el("div", { class: "meta", text: det.fast_delivery }),
       el("div", { class: "meta", text: "عنوان فروشنده: " + det.seller_title })));
   }
-  card.append(chipButton(s.button, compact ? "chip" : "primary", `زنگ به «${s.name}»`));
+  card.append(chipButton(s.button, compact ? "btn line" : "btn red", `زنگ به «${s.name}»`, "phone"));
   return card;
 }
 
 function shopBlock(d) {
   const block = el("section");
-  if (d.product) block.append(el("h3", { text: `فروشنده‌های «${d.product.title}»` }));
+  if (d.product) block.append(el("div", { class: "block-h" }, el("h3", { text: `فروشنده‌های «${shortTitle(d.product.title)}»` }),
+    d.items?.length ? el("span", { text: `${fa(d.items.length + (d.more_count || 0))} فروشگاه` }) : null));
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (d.relaxed?.chip) block.append(el("div", { class: "chips start-align" }, chipButton(d.relaxed.chip)));
   (d.items || []).forEach((s) => block.append(shopCard(s)));
   if (d.junk_line) block.append(el("div", { class: "junk", text: d.junk_line }));
   if (d.more?.length) {
-    block.append(el("details", {}, el("summary", { text: `${fa(d.more_count)} فروشگاه دیگه هم دارن` }),
+    block.append(el("details", { class: "more" }, el("summary", { text: `${fa(d.more_count)} فروشگاه دیگه هم دارن` }),
       d.more.map((s) => shopCard(s, true))));
   }
   if (d.category_only?.length) {
-    block.append(el("details", {}, el("summary", { text: `${fa(d.category_only.length)} فروشگاه فقط دسته‌ی مرتبط دارن — موجودی نامعلوم` }),
-      d.category_only.map((s) => el("div", { class: "card" }, el("div", { class: "name", text: s.name }),
-        el("div", { class: "meta", text: s.where }), el("div", { class: "meta", text: s.stock_label }),
-        el("div", { class: "meta", text: `${fa(s.minutes)} دقیقه (تخمینی)` })))));
+    block.append(el("details", { class: "more" }, el("summary", { text: `${fa(d.category_only.length)} فروشگاه فقط دسته‌ی مرتبط دارن` }),
+      el("div", { class: "meta", text: "این‌ها این مدل رو ثبت نکرده‌اند؛ موجودی نامعلومه." }),
+      d.category_only.map((s) => el("div", { class: "card catcard" }, el("div", { class: "name", text: s.name }),
+        el("div", { class: "lines" }, line("pin", s.where), line("clock", `${fa(s.minutes)} دقیقه (تخمینی)`), line("box", s.stock_label))))));
   }
   return block;
 }
@@ -243,7 +317,8 @@ function updateShopCard(d) {
   if (!cards.length) return;
   const card = cards[cards.length - 1];
   $(".simbox", card)?.remove();
-  const box = el("div", { class: "simbox sim" }, el("div", { class: d.stock === "simulated_confirmed" ? "stock-sim" : "stock-bad", text: d.label }),
+  const box = el("div", { class: "simbox sim" },
+    el("div", { class: d.stock === "simulated_confirmed" ? "stock-sim" : "stock-bad" }, el("span", { text: d.label }), simTag()),
     d.price_change ? el("div", { text: d.price_change }) : null,
     d.location ? el("div", { text: "نشانی‌ای که گفت: " + d.location }) : null,
     d.hold_until ? el("div", { text: `تا ${fa(d.hold_until)} نگه می‌دارن` }) : null);
@@ -257,26 +332,31 @@ const isPhone = /Android|iPhone|iPad/i.test(navigator.userAgent);
 function renderPlan(p, quiet = false) {
   const sim = p.simulated || {};
   const nav = isPhone ? p.nav.geo_uri : p.nav.osm_url;
+  const open = p.open_at_arrival === "yes" ? "open-yes" : p.status === "closed_at_arrival" ? "open-no" : "";
   const card = el("article", { class: "card plan" },
-    el("h3", { text: "برنامه‌ی خرید" }),
-    el("div", { class: "name", text: `${p.name} — ${p.product_title}` }),
-    p.where ? el("div", { class: "meta", text: p.where }) : null,
-    el("div", { class: "meta" }, el("bdi", { text: p.dataset.price }), "، ", el("bdi", { text: p.dataset.age })),
-    el("div", { class: "meta", text: p.dataset.visit + (p.arrival ? `، رسیدن ${fa(p.arrival)}` : "") }),
-    el("div", { class: "simbox sim" }, el("div", { text: sim.label }),
-      sim.price_change ? el("div", { text: sim.price_change }) : null,
-      sim.hold_until ? el("div", { text: `نگه می‌دارن تا ${sim.hold_until}` }) : null,
-      sim.hold_short ? el("div", { class: "warn", text: "نگه‌داشتنش تا رسیدنت کافی نیست." }) : null),
-    p.status === "closed_at_arrival" && p.switch_to ? el("div", { class: "card alt" },
-      el("div", { text: p.switch_to.text }), p.switch_to.chip ? chipButton(p.switch_to.chip) : null) : null,
-    p.backup ? el("div", { class: "meta", text: `فروشگاه پشتیبان: ${p.backup.name}، ${p.backup.visit}` }) : null,
-    el("a", { class: "primary", href: nav, target: isPhone ? null : "_blank", rel: "noopener", text: "مسیر" }),
-    el("div", { class: "chips start-align" }, chipButton(p.recheck)));
+    el("div", { class: "plan-h" }, icon("list"), el("span", { text: "برنامه‌ی خرید" })),
+    el("div", { class: "plan-b" },
+      el("div", { class: "name", text: p.name }),
+      el("div", { class: "meta", text: p.product_title }),
+      el("div", { class: "lines" },
+        p.where ? line("pin", p.where) : null,
+        el("div", { class: "ln" }, icon("tag"), el("span", {}, el("bdi", { text: p.dataset.price }), "، ", el("bdi", { text: p.dataset.age }))),
+        line("clock", p.dataset.visit + (p.arrival ? `، رسیدن ${fa(p.arrival)}` : ""), open)),
+      el("div", { class: "simbox sim" }, el("div", {}, el("span", { text: sim.label }), simTag()),
+        sim.price_change ? el("div", { text: sim.price_change }) : null,
+        sim.hold_until ? el("div", { text: `نگه می‌دارن تا ${sim.hold_until}` }) : null,
+        sim.hold_short ? el("div", { class: "warn", text: "نگه‌داشتنش تا رسیدنت کافی نیست." }) : null),
+      p.status === "closed_at_arrival" && p.switch_to ? el("div", { class: "card alt" },
+        el("div", { text: p.switch_to.text }), p.switch_to.chip ? chipButton(p.switch_to.chip) : null) : null,
+      p.backup ? el("div", { class: "meta", text: `فروشگاه پشتیبان: ${p.backup.name}، ${p.backup.visit}` }) : null,
+      el("a", { class: "btn red", href: nav, target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر تا فروشگاه" })),
+      el("div", { class: "chips start-align" }, chipButton(p.recheck, "chip", undefined))));
   planSlot.replaceChildren(card);
   const bar = $("#plan-bar");
   bar.hidden = false;
-  bar.textContent = `برنامه‌ی خرید: ${p.name}، ${p.dataset.visit}` + (p.status === "closed_at_arrival" ? " — تا برسی بسته‌ست" : "");
+  bar.replaceChildren(icon("list"), el("span", { text: `برنامه‌ی خرید: ${p.name}، ${p.dataset.visit}` + (p.status === "closed_at_arrival" ? " — تا برسی بسته‌ست" : "") }));
   if (!quiet) stream.append(el("div", { class: "status", text: "برنامه‌ی خرید بالای صفحه به‌روز شد ↑" }));
+  measureSticky();
 }
 
 // --- conditions strip ---------------------------------------------------------------------------------------------
@@ -324,7 +404,7 @@ const SHEETS = {
     const err = el("div", { class: "error" });
     return el("div", {}, opts(BUDGETS, cond ? cond.budget_max : null, (v) => refine({ budget_max: v })),
       el("div", { style: "margin-top:8px" }, input, err,
-        el("button", { type: "button", class: "primary", text: "اعمال", onclick: () => {
+        el("button", { type: "button", class: "btn blue", text: "اعمال", onclick: () => {
           const m = parseFloat(toLatin(input.value));
           if (!(m > 0)) { err.textContent = "یه عدد بنویس، مثلاً ۲٫۵"; return; }
           sheet.close(); refine({ budget_max: Math.round(m * 1e6) });
@@ -340,7 +420,7 @@ const SHEETS = {
     // Pre-fill only a same-day arrival; a «شنبه ۱۰:۰۰» plan is shown as text so re-confirming can't lose its date.
     const t = el("input", { type: "time", value: cond?.arrive_today ? cond.arrive_at : "" });
     return el("div", {}, cond?.arrive_label ? el("div", { class: "meta", text: "الان: " + cond.arrive_label }) : null, t,
-      el("button", { type: "button", class: "primary", text: "همین ساعت", onclick: () => { if (t.value) { sheet.close(); refine({ arrive_at: t.value }); } } }),
+      el("button", { type: "button", class: "btn blue", text: "همین ساعت", onclick: () => { if (t.value) { sheet.close(); refine({ arrive_at: t.value }); } } }),
       el("button", { type: "button", class: "opt wide", text: "الان راه می‌افتم",
         onclick: () => { sheet.close(); refine({ arrive_at: null }); } }));
   }),
@@ -356,7 +436,7 @@ async function openLocation() {
   let areas = [];
   try { const r = await (await fetch("/api/areas")).json(); if (Array.isArray(r)) areas = r; } catch (_) {}
   openSheet("کجایی؟", () => el("div", { class: "opts" },
-    el("button", { type: "button", class: "opt", text: "مکان من (GPS)", onclick: () => {
+    el("button", { type: "button", class: "opt plain", text: "مکان من (GPS)", onclick: () => {
       sheet.close();
       if (!navigator.geolocation) return showError("مرورگرت مکان رو نمی‌ده؛ یه محله انتخاب کن.");
       navigator.geolocation.getCurrentPosition((p) => {
@@ -365,7 +445,7 @@ async function openLocation() {
         pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
       }, () => showError("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), { timeout: 8000 });
     } }),
-    areas.slice(0, 14).map((a) => el("button", { type: "button", class: "opt",
+    areas.slice(0, 14).map((a) => el("button", { type: "button", class: "opt" + (cond && a.area === cond.area ? " on" : ""),
       text: `${a.area}، ${fa(a.shops_with_offers)} فروشگاه`, onclick: () => { sheet.close();
         pickLocation({ lat: a.lat, lng: a.lon, label: a.area, source: "area" }, a.area); } }))));
 }
@@ -373,11 +453,12 @@ async function openLocation() {
 // --- wiring ---------------------------------------------------------------------------------------------------------
 
 function measureSticky() {
-  const top = $(".top").offsetHeight, s = strip.hidden ? 0 : strip.offsetHeight;
+  const top = $(".top").offsetHeight, bar = $("#plan-bar");
   document.documentElement.style.setProperty("--top-h", `${top}px`);
-  document.documentElement.style.setProperty("--strip-h", `${s}px`);
+  document.documentElement.style.setProperty("--bar-h", `${bar.hidden ? 0 : bar.offsetHeight + 8}px`);
 }
-new ResizeObserver(measureSticky).observe(document.body);
+const ro = new ResizeObserver(measureSticky);
+ro.observe(document.body); ro.observe($(".top"));
 
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -393,7 +474,10 @@ $("#plan-bar").addEventListener("click", () => window.scrollTo({ top: 0, behavio
 $("#reset").addEventListener("click", () => {
   fetch("/api/reset", { method: "POST" }).catch(() => {}).finally(() => location.reload());
 });
-window.addEventListener("scroll", () => strip.classList.toggle("compact", window.scrollY > 160), { passive: true });
+window.addEventListener("scroll", () => {   // hysteresis: hiding the location row shifts the page, so no flicker at the edge
+  const top = $(".top"), y = window.scrollY;
+  if (y > 160) top.classList.add("compact"); else if (y < 40) top.classList.remove("compact");
+}, { passive: true });
 
 (async () => {
   try {

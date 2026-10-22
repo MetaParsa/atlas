@@ -379,7 +379,8 @@ def price_line(o: ShopOffer, now: datetime) -> dict:
         f"{format_toman(o.price_min)} تا {format_toman(o.price_max)}"
     unit = " (قیمت متری)" if o.per_metre else ""
     return {"text": f"قیمت ثبت‌شده: {price}{unit}", "age": age, "old": old,
-            "note": "احتمالاً تغییر کرده" if old else None}
+            "note": "احتمالاً تغییر کرده" if old else None,
+            "min": o.price_min, "max": o.price_max, "per_metre": bool(o.per_metre)}   # numbers for the card layout
 
 
 def payment_labels(o: ShopOffer) -> list[str]:

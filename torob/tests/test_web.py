@@ -84,3 +84,19 @@ def test_full_page_flow_over_http(client):
     assert "event: product_cards" in r.text
     r = client.post("/api/refine", json={"conditions": {"payment": "credit"}})
     assert r.status_code == 200 and "event: conditions" in r.text
+
+
+@needs_db
+def test_shop_price_carries_numbers_for_the_card():
+    s = SessionState()
+    items = dict(turn(s, text="شارژر اصل آیفون"))["product_cards"]["items"]
+    ev = turn(s, chip=Chip(label="x", kind="direct_call", tool="show_shops", args={"product_id": items[0]["product_id"]}))
+    price = dict(ev)["shop_cards"]["items"][0]["price"]
+    assert price["min"] > 0 and price["max"] >= price["min"] and isinstance(price["per_metre"], bool)
+    assert price["text"].startswith("قیمت ثبت‌شده")         # the honest label is still there for the plan card
+
+
+def test_page_uses_self_hosted_font_only():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    css = (WEB / "app.css").read_text(encoding="utf-8")
+    assert "fonts.googleapis" not in html + css and (WEB / "fonts" / "Vazirmatn-wght.woff2").exists()
