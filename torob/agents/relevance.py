@@ -18,7 +18,8 @@ from core.llm import LLMClient
 MAX_ITEMS = 40   # the advisor ranks at most 40 anyway
 PROMPT = """A shopper in Tehran asked: {want}
 
-Products found in the shop catalogue (index | title | category | typical price in toman):
+Products found in the shop catalogue (index | title | category | typical price in toman). Prices are current Tehran
+prices (late 2026, after years of inflation), so judge prices against the other listings here, not from memory:
 {rows}
 
 For EACH product decide whether a sensible salesperson would show it for this request:
@@ -28,8 +29,8 @@ For EACH product decide whether a sensible salesperson would show it for this re
   capacity, a stated form ("small, for travel" rules out large home or party speakers), or the budget (far above it,
   or so far below it that it is clearly a different class, e.g. a 2-million basic phone for a 20-million budget);
 - yes otherwise. Soft wishes ("good", "cheap", "for the gym") never make it a no.
-Also mark copy=true when it looks like a copy or imitation of a brand-name product (title says طرح / کپی / فیک, or the
-price is far below what the genuine product costs in Iran).
+Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
+or its price is a small fraction of other listings of the same model in this list.
 
 Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false}}, ...]}} covering every index."""
 
