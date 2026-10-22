@@ -463,7 +463,7 @@ table.compare td:first-child { color: var(--muted); }
 .tm-radius { stroke: var(--blue); stroke-width: 1.5; stroke-dasharray: 6 6; fill: var(--blue); fill-opacity: .05; }
 .tm-hubzone { stroke: var(--red); stroke-width: 1; stroke-opacity: .5; fill: var(--red); fill-opacity: .1; }
 .tm-hubzone.top { fill-opacity: .18; stroke-opacity: .8; }
-.tm-hub { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; direction: rtl;
+.tm-hub { position: absolute; transform: translate(-50%, calc(-50% + var(--dy, 0px))); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; direction: rtl;
           padding: 2px 9px; border-radius: 12px; font: 700 12px/1.6 Vazirmatn, system-ui, sans-serif; color: var(--red);
           background: var(--card); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); cursor: pointer; }
 .tm-hub.top { color: #fff; background: var(--red); }

@@ -49,12 +49,29 @@
   }
   function addHubs(layer, hubs, onClick) {
     const max = Math.max(...hubs.map((b) => b.shops), 1);
-    hubs.forEach((b, i) => {
+    const labels = hubs.map((b, i) => {
       L.circle([b.lat, b.lon], { radius: 70 + 160 * Math.sqrt(b.shops / max), className: "tm-hubzone" + (i === 0 ? " top" : ""),
         interactive: false }).addTo(layer);
       const mk = L.marker([b.lat, b.lon], { icon: divIcon(hubLabel(b, i)), zIndexOffset: 500 - i }).addTo(layer);
       if (onClick) mk.on("click", () => onClick(b));
+      return mk;
     });
+    // Hubs are often a few doors apart (Aladdin, Charsou, Bozorgmehr): stack labels that would cover each other.
+    const map = layer instanceof L.Map ? layer : layer._map;
+    const declutter = () => {
+      const placed = [];
+      for (const mk of labels) {
+        const node = mk.getElement()?.firstChild;
+        if (!node) continue;
+        const p = map.latLngToContainerPoint(mk.getLatLng());
+        const w = node.offsetWidth || 90, h = 26;
+        let dy = 0;
+        while (placed.some((q) => Math.abs(q.x - p.x) < (q.w + w) / 2 && Math.abs(q.y - (p.y + dy)) < h)) dy += h;
+        node.style.setProperty("--dy", `${dy}px`);
+        placed.push({ x: p.x, y: p.y + dy, w });
+      }
+    };
+    if (map) { map.on("zoomend", declutter); setTimeout(declutter, 0); }
   }
   // Shops in one passage share coordinates: one pin with a count, opened as a list (floor, price, open).
   function groupByBuilding(points) {
@@ -264,7 +281,7 @@
     showPanel(el("div", { class: "mv-name", text: `${b.kind} ${b.name}` }),
       el("div", { class: "meta", text: `${fa(b.shops)} فروشنده از ${fa(d.total)} در تهران (${fa(Math.round(b.share * 100))}٪) · ${fa(b.floors)} طبقه · ${b.area}` }),
       el("div", { class: "mv-actions" },
-        el("button", { type: "button", class: "btn blue", onclick: () => act(go, go.label) }, icon("store"), el("span", { text: "مدل‌ها و فروشنده‌ها همین‌جا" })),
+        el("button", { type: "button", class: "btn blue", onclick: () => act(go, go.label) }, icon("store"), el("span", { text: "مدل‌ها همین‌جا" })),
         el("a", { class: "btn line", href: navHref(b.lat, b.lon), target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر" }))),
       el("button", { type: "button", class: "ghost", text: "همه‌ی بورس‌ها", onclick: () => hubList(d) }));
   }
