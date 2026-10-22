@@ -87,7 +87,7 @@ class AskQuestion(BaseModel):
 
 class RouterOutput(BaseModel):
     """The one JSON LLM call per free-text turn (R10); code routes on `intent`."""
-    intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "other"] = "other"
+    intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "hub", "other"] = "other"
     need: Need | None = None
     conditions_patch: dict = {}
     target: str = Field("", max_length=80)   # call_shop: which shown shop («اولی», «دومی», or part of its name)

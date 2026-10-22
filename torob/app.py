@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from core.agent_loop import Emitter
 from core.llm import FakeLLM, LLMClient, from_env
 from torob import boot, live as live_torob, store
-from torob.agents import vision
+from torob.agents import places, vision
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
 from torob.router import conditions_event, rule_route, run_turn, say
@@ -79,6 +79,8 @@ class RateLimiter:
 
 chat_limit = RateLimiter(20, 60)
 live_limit = RateLimiter(40, 60)   # the page asks for live prices card by card; Torob itself is protected in live.py
+tile_limit = RateLimiter(900, 60)  # a map view is ~30–60 tiles; panning around Tehran for a minute stays well under
+map_limit = RateLimiter(30, 60)
 _busy: dict[str, float] = {}     # sid -> turn start; expires so a stream that never started can't lock a session
 _busy_lock = threading.Lock()
 BUSY_TTL_S = 60
@@ -151,7 +153,7 @@ def _index_html(stamp: tuple) -> str:
     """index.html with ?v=<content hash> on app.css/app.js, so a new deploy is a new URL for every cache."""
     import hashlib
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    for name in ("app.css", "app.js", "radish-sprites.js"):
+    for name in ("app.css", "app.js", "radish-sprites.js", "map.js"):
         v = hashlib.sha256((WEB / name).read_bytes()).hexdigest()[:10]
         page = page.replace(f"/static/{name}", f"/static/{name}?v={v}")
     return page
@@ -159,7 +161,7 @@ def _index_html(stamp: tuple) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    stamp = tuple((WEB / n).stat().st_mtime_ns for n in ("index.html", "app.css", "app.js", "radish-sprites.js"))
+    stamp = tuple((WEB / n).stat().st_mtime_ns for n in ("index.html", "app.css", "app.js", "radish-sprites.js", "map.js"))
     return HTMLResponse(_index_html(stamp), headers={"Cache-Control": "no-cache"})
 
 
@@ -211,6 +213,97 @@ def live_shops(product_id: str, request: Request, ids: str = "") -> dict:
     rows = store.get().execute(f"SELECT shop_id, lat, lon FROM shops WHERE shop_id IN ({','.join('?' * len(shop_ids))})",
                                shop_ids).fetchall() if shop_ids else []
     return live().shops(product_id, title, [dict(r) for r in rows if r["lat"] is not None])
+
+
+# --- maps: OpenStreetMap tiles through this server (cached on disk, Tehran only), and the map data ---------------
+# OSM's own tiles carry Persian street names and need no key (Carto's now return an «API key required» watermark).
+# The page softens them, and inverts them for dark mode, with a CSS filter.
+
+TILE_SOURCES = {"osm": "https://tile.openstreetmap.org/{z}/{x}/{y}.png"}
+TILE_Z = (10, 19)
+TILE_DAILY_FETCHES = int(os.environ.get("TILE_DAILY_FETCHES", "20000"))   # new tiles asked of OSM per day, whole server
+_tile_day = {"day": "", "n": 0}
+TEHRAN_BOX = (35.45, 35.95, 50.95, 51.85)   # lat_min, lat_max, lon_min, lon_max
+
+
+def _tile_range(z: int) -> tuple[int, int, int, int]:
+    import math
+    n = 2 ** z
+    def tx(lon): return int((lon + 180) / 360 * n)
+    def ty(lat):
+        r = math.radians(lat)
+        return int((1 - math.log(math.tan(r) + 1 / math.cos(r)) / math.pi) / 2 * n)
+    return tx(TEHRAN_BOX[2]), tx(TEHRAN_BOX[3]), ty(TEHRAN_BOX[1]), ty(TEHRAN_BOX[0])
+
+
+@lru_cache(maxsize=1)
+def _tile_http():
+    import httpx
+    return httpx.Client(timeout=8, headers={"User-Agent": "dastyar-kharid-hozoori/1.0 (StarCoach hackathon demo)"})
+
+
+@app.get("/tiles/{style}/{z}/{x}/{y}.png")
+def tile(style: str, z: int, x: int, y: int, request: Request):
+    """One map tile. Only Tehran and zoom 10–19 (this is not a general tile server); each tile is fetched once, kept
+    on the data disk and served with a long cache so the CDN keeps it too. Shoppers' browsers only talk to us."""
+    if style not in TILE_SOURCES or not TILE_Z[0] <= z <= TILE_Z[1]:
+        raise HTTPException(404)
+    x0, x1, y0, y1 = _tile_range(z)
+    if not (x0 <= x <= x1 and y0 <= y <= y1):
+        raise HTTPException(404)
+    path = appdb().path.parent / "tiles" / style / str(z) / str(x) / f"{y}.png"
+    headers = {"Cache-Control": "public, max-age=2592000, immutable"}
+    if path.exists():
+        return FileResponse(path, media_type="image/png", headers=headers)
+    today = time.strftime("%Y-%m-%d")
+    if _tile_day["day"] != today:
+        _tile_day.update(day=today, n=0)
+    if not tile_limit.allow(client_ip(request)) or _tile_day["n"] >= TILE_DAILY_FETCHES:   # OSM's tile policy: no bulk use
+        raise HTTPException(429)
+    _tile_day["n"] += 1
+    url = TILE_SOURCES[style].format(z=z, x=x, y=y)
+    try:
+        resp = _tile_http().get(url)
+    except Exception:
+        raise HTTPException(502)
+    if resp.status_code != 200 or not resp.content.startswith(b"\x89PNG"):
+        raise HTTPException(502)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(resp.content)
+    tmp.replace(path)
+    return Response(resp.content, media_type="image/png", headers=headers)
+
+
+@app.get("/api/map/product/{product_id}")
+def map_product(product_id: str, request: Request, response: Response,
+                sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+    """Every in-person seller of the selected product for the full map, planned against this session's conditions."""
+    response.headers["Cache-Control"] = PRIVATE
+    if not map_limit.allow(client_ip(request)):
+        raise HTTPException(429, "کمی صبر کن")
+    _product_title(product_id)
+    _, state = appdb().load(sid)
+    if product_id != state.selected_product_id and product_id not in state.product_ids:
+        raise HTTPException(404, "این کالا الان روی صفحه نیست")
+    return places.product_map(product_id, state.conditions, [s["shop_id"] for s in state.shops_shown]
+                              if product_id == state.selected_product_id else [])
+
+
+@app.get("/api/map/category")
+def map_category(request: Request, c: list[str] = Query(default=[], max_length=2)) -> dict:
+    """Sellers of a category as dots, and its hubs: the «بورس» map. Same for everyone (no session)."""
+    if not map_limit.allow(client_ip(request)):
+        raise HTTPException(429, "کمی صبر کن")
+    cats = tuple(dict.fromkeys(x for x in c if 0 < len(x) <= 120))
+    con = store.get()
+    if not cats or any(con.execute("SELECT 1 FROM products WHERE category = ? LIMIT 1", (x,)).fetchone() is None
+                       for x in cats):
+        raise HTTPException(404, "این دسته در دیتاست نیست")
+    from torob.models import Conditions
+    data = places.category_map(cats, Conditions())
+    data.pop("center", None)
+    return data
 
 
 @app.get("/api/popular")

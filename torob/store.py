@@ -11,6 +11,12 @@ from core.text import normalize_fa
 DB_PATH = Path(os.environ.get("TOROB_DB", "data/torob.db"))
 
 
+def sells(shop_id: str, product_id: str) -> bool:
+    """The shop registered this product (any price): it may be called about it."""
+    return get().execute("SELECT 1 FROM offers WHERE shop_id = ? AND product_id = ? LIMIT 1",
+                         (shop_id, product_id)).fetchone() is not None
+
+
 def _uri() -> str:
     # mode=ro (not immutable): SQLite still notices if the file is replaced by a new upload.
     return f"file:{DB_PATH.resolve().as_posix()}?mode=ro"

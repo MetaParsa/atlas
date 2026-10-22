@@ -425,5 +425,6 @@ def card(o: ShopOffer, product: dict, cond: Conditions, now: datetime) -> dict:
                     "seller_note": (o.seller_note[:280] + "…") if o.seller_note and len(o.seller_note) > 280 else o.seller_note},
         "badges": o.badges[:2], "reasons": reasons, "same_building_others": o.same_building_others,
         "lat": s["lat"], "lon": s["lon"], "button": call.model_dump(),
+        "building_gid": s["building_gid"], "building": f"{s['building_kind'] or 'پاساژ'} {s['building']}" if s["building"] else None,
         "instagram": _link(s["instagram"]), "website": _link(s["website"]),   # only the 112 real-named shops have one
     }

@@ -16,11 +16,13 @@ from pydantic import BaseModel, Field, ValidationError
 from core.agent_loop import Emitter
 from core.llm import LLMClient
 from core.text import format_million, format_price_short, format_toman, normalize_fa, to_fa_digits, to_latin_digits
+from torob import search
 from torob import store
 from torob import clock
 from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import compose as composer
+from torob.agents import places
 from torob.agents import followup
 from torob.agents import relevance
 from torob import live as live_torob
@@ -36,6 +38,7 @@ _BUDGET = re.compile(rf"(?:تا|زیر|حداکثر|کمتر از|نهایتا|�
 _TIME_WORDS = re.compile(r"^\s*(?:شب|صبح|عصر|ظهر|بعد ?از ?ظهر|ساعت|دقیقه|روز)")
 _CREDIT = re.compile(r"قسط|اقساط|اعتباری|ترب ?پی|اسنپ ?پی|دیجی ?پی")
 _CALL = re.compile(r"بپرس|زنگ بزن|تماس بگیر")
+_HUB = re.compile(r"بورس|راسته|مرکز (?:خرید|فروش)|کجا (?:بخرم|برم|بگیرم)")
 _ORDINAL_INDEX = {"اولی": 0, "اولین": 0, "اول": 0, "دومی": 1, "دومین": 1, "دوم": 1, "سومی": 2, "سومین": 2, "سوم": 2,
                   "چهارمی": 3, "چهارم": 3, "پنجمی": 4, "پنجم": 4}
 # Whole words only: «دوم» must not match inside «کدومشون».
@@ -100,7 +103,8 @@ def rule_route(text: str, allow_ask: bool = True) -> RouterOutput:
         patch["payment"] = "credit"
     if allow_ask and re.search(r"کدوم|کدام", t) and _ASK.search(t) and not _ORDINAL.search(t):
         return RouterOutput(intent="ask_results", conditions_patch=patch)   # «بپرس ببین کدومشون قسطی دارن»
-    if _CALL.search(t):
+    hub = bool(_HUB.search(t))
+    if _CALL.search(t) and not hub:
         m = _ORDINAL.search(t)
         return RouterOutput(intent="call_shop", conditions_patch=patch, target=m.group(1) if m else "")
     if allow_ask and _ASK.search(t) and not budget:
@@ -111,8 +115,12 @@ def rule_route(text: str, allow_ask: bool = True) -> RouterOutput:
         words = []
     if not words:
         return RouterOutput(intent="refine" if patch else "other", conditions_patch=patch)
+    if hub:   # «بورس هندزفری کجاست» → the item is what's left after the hub words
+        words = [w for w in words if not _HUB.fullmatch(w) and w not in ("کجاست", "کجا", "کجاس", "مرکز", "خرید")]
+        if not words:
+            return RouterOutput(intent="hub")
     need = Need(product_type=" ".join(words[:3]), keywords=[" ".join(words)], budget_max=budget)
-    return RouterOutput(intent="need", need=need, conditions_patch=patch)
+    return RouterOutput(intent="hub" if hub else "need", need=need, conditions_patch=patch)
 
 
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
@@ -177,7 +185,8 @@ def apply_patch(state: SessionState, patch: dict) -> list[str]:
 
 def conditions_event(state: SessionState) -> dict:
     c = state.conditions
-    return {"area": c.center.label, "radius_km": c.radius_km, "budget_max": c.budget_max,
+    return {"area": c.center.label, "center": {"lat": c.center.lat, "lng": c.center.lng},
+            "radius_km": c.radius_km, "budget_max": c.budget_max,
             "budget_label": f"تا {format_price_short(c.budget_max)}" if c.budget_max else None,
             "payment": c.payment, "fast_delivery": c.fast_delivery, "open": c.open,
             "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None,
@@ -311,10 +320,32 @@ class CallShopArgs(DirectTool):
 @direct("call_shop", CallShopArgs)
 def _chip_call_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iterator[str]:
     """Step 4: simulated call to a shown shop for the selected product (S6)."""
-    if args.shop_id not in state.call_ok_ids or args.product_id != state.selected_product_id:
+    if args.product_id != state.selected_product_id or not (
+            args.shop_id in state.call_ok_ids or store.sells(args.shop_id, args.product_id)):   # the map lists them all
         yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
         return
     yield from call_shop(state, em, args.shop_id, hold=args.hold)
+
+
+class GoHubArgs(DirectTool):
+    """«مدل‌ها تو علاءالدین»: search right at a hub (a passage), within walking distance of it."""
+    lat: float = Field(ge=35.5, le=35.9)
+    lng: float = Field(ge=51.0, le=51.8)
+    label: str = Field(max_length=60)
+
+
+@direct("go_hub", GoHubArgs)
+def _chip_go_hub(state: SessionState, em: Emitter, args: GoHubArgs) -> Iterator[str]:
+    state.conditions = state.conditions.model_copy(update={
+        "center": Location(lat=args.lat, lng=args.lng, label=args.label, source="area"), "radius_km": 0.5})
+    state.just_changed = ["radius_km"]
+    yield em.emit("conditions", conditions_event(state))
+    if state.last_block_kind == "shops" and state.selected_product_id:
+        yield from show_shops(state, em)
+    elif state.need:
+        yield from show_products(state, em)
+    else:
+        yield say(state, em, "بگو دنبال چی هستی تا همین‌جا برات پیدا کنم.")
 
 
 def _excluded(state: SessionState) -> set[str]:
@@ -509,7 +540,8 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
               f" → {to_fa_digits(len(cards))} تا رو مقایسه کردم") if cards else "چیزی پیدا نشد"
     yield em.emit("status", {"text": status, "done": True})
     yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(c) for c in cards],
-                                    "compare_rows": res.compare_rows, "notes": res.notes})
+                                    "compare_rows": res.compare_rows, "notes": res.notes,
+                                    "hub": _hub_line(res.picks[0].c.category) if cards else None})
     if intro and len(cards) >= 2:   # generative UI: a comparison built for this shopper's own words
         said = " / ".join(h["content"] for h in state.history if h["role"] == "user")[-300:]
         yield from compose_ui(state, em, said, intro=True)
@@ -520,6 +552,45 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
     elif ask and res.question:
         state.remember("assistant", res.question["text"])
         yield em.emit("question", res.question)
+
+
+def _hub_line(category: str) -> dict | None:
+    """«بورس این دسته: پاساژ علاالدین (۴۴ فروشنده)» under the product cards, with what the hub map needs."""
+    h = places.hubs((category,))
+    if not h["buildings"] or h["spread"]:
+        return None
+    b = h["buildings"][0]
+    return {"text": f"بورس «{category}»: {b['kind']} {b['name']} ({to_fa_digits(b['shops'])} فروشنده)",
+            "categories": [category], "subject": category}
+
+
+def show_hub(state: SessionState, em: Emitter, need: Need | None) -> Iterator[str]:
+    """«بورس … کجاست؟»: the buildings and neighbourhood where that trade gathers, measured on the dataset, with a map
+    and a button per hub that searches right there."""
+    need = need or state.need
+    if need is None:
+        yield say(state, em, "بورسِ چی رو می‌خوای؟ اسم کالا یا صنف رو بگو.")
+        return
+    state.need = need
+    yield em.emit("status", {"text": "دارم می‌گردم ببینم فروشنده‌هاش بیشتر کجا جمع‌ان…", "done": False})
+    _, cats = search.candidates(need)
+    if not cats:
+        yield em.emit("status", {"text": "دسته‌اش رو پیدا نکردم", "done": True})
+        yield say(state, em, "این کالا رو تو داده‌ی ترب پیدا نکردم؛ یه جور دیگه بگو؟")
+        return
+    cats = tuple(cats[:2])
+    h = places.hubs(cats)
+    subject = need.product_type or (need.keywords[0] if need.keywords else cats[0])
+    text = places.hub_sentence(subject, h)
+    yield em.emit("status", {"text": f"{to_fa_digits(h['total'])} فروشنده‌ی حضوری تو دسته‌ی «{'، '.join(cats)}» → "
+                                     f"شمردم کجا جمع‌ان", "done": True})
+    chips = [Chip(label=f"مدل‌ها تو {b['name']}", kind="direct_call", tool="go_hub",
+                  args={"lat": b["lat"], "lng": b["lon"], "label": f"{b['kind']} {b['name']}"}).model_dump()
+             for b in h["buildings"][:2]]
+    chips.append(Chip(label="مدل‌ها رو نشون بده", kind="say", value=f"{subject} پیشنهاد بده").model_dump())
+    state.remember("assistant", text)
+    yield em.emit("hub", {"subject": subject, "text": text, "categories": list(cats), "total": h["total"],
+                          "buildings": h["buildings"], "areas": h["areas"], "spread": h["spread"], "chips": chips})
 
 
 def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
@@ -732,6 +803,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield from _which_shop(state, em)
         else:   # the user asked («بپرس») — that is the permission rule 5 needs
             yield from call_shop(state, em, shop["shop_id"], hold="نگه" in normalize_fa(text))
+    elif out.intent == "hub":
+        yield from show_hub(state, em, out.need)
     elif out.intent == "ask_results":
         if state.shops_shown or (state.products_shown and state.last_block_kind == "products"):
             yield from answer_results(state, em, text)

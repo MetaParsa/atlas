@@ -143,7 +143,7 @@ def plan_card(o: S.ShopOffer, product: dict, result: CallResult, backup: S.ShopO
         "arrival": o.arrival.strftime("%H:%M") if o.arrival else None,
         "open_at_arrival": o.open_state,
         "backup": _mini(backup, now) if backup else None,
-        "nav": nav(s),
+        "nav": nav(s), "lat": s["lat"], "lon": s["lon"],
         "recheck": call_chip(s["shop_id"], product["product_id"], "قبل از رفتن دوباره بپرس"),
         "status": "ok",
     }

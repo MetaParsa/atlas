@@ -292,7 +292,7 @@ const handlers = {
     Radish.set("text");
   },
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); Radish.set("happy"); },
-  shop_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
+  shop_cards(d) { hasResults = true; strip.hidden = false; shownProduct = d.product || null; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
   call_start(d) {
     callNames[d.call_id] = d.shop_name || "فروشنده";
     Radish.set("call");
@@ -313,6 +313,29 @@ const handlers = {
     Radish.set("happy");
   },
   card_update(d) { updateShopCard(d); },
+  hub(d) {
+    const box = el("section", { class: "gen hubbox" });
+    box.append(agentRow(el("div", { class: "bubble agent", text: d.text })));
+    const max = Math.max(...d.buildings.map((b) => b.shops), 1);
+    const card = el("div", { class: "card gcard" }, el("div", { class: "gen-title", text: d.spread ? `فروشنده‌های «${d.subject}»` : `بورس «${d.subject}»` }),
+      el("div", { class: "meta", text: `طبق داده‌ی ترب: ${fa(d.total)} فروشنده‌ی حضوری در تهران` }));
+    const mm = miniMap({ hubs: d.buildings, center: cond?.center, onOpen: () => openHubMap(d) }, "نقشه‌ی بورس");
+    const node = mm.firstChild, center = cond?.center;
+    node.drawMap = async (M) => {   // every seller of the trade as a dot, then the hubs on top
+      let dots = [];
+      try { dots = (await (await fetch("/api/map/category?" + d.categories.map((c) => "c=" + encodeURIComponent(c)).join("&"))).json()).dots || []; } catch (_) {}
+      M.mini(node, { hubs: d.buildings, dots, center, onOpen: () => openHubMap(d) });
+    };
+    card.append(mm);
+    if (d.buildings.length) card.append(el("div", { class: "hub-rows" }, d.buildings.slice(0, 4).map((b, i) => el("div", { class: "hub-row" + (i === 0 && !d.spread ? " top" : "") },
+      el("span", { class: "r-name", text: `${b.kind} ${b.name}` }), el("span", { class: "r-bar" }, el("span", { style: `inline-size:${Math.round((b.shops / max) * 100)}%` })),
+      el("bdi", { class: "r-n", text: fa(b.shops) })))));
+    box.append(card);
+    if (d.chips?.length) box.append(el("div", { class: "chips gen-actions" }, d.chips.map((c) => chipButton(c))));
+    stream.append(box);
+    Radish.set("map");
+    scrollEnd();
+  },
   ui(d) {   // generative UI: blocks the model chose for this answer, every value filled in by the server
     if (d.mode === "intro") $("#blk-products .compare-wrap")?.remove();   // the AI's comparison replaces the generic one
     const box = el("section", { class: "gen" });
@@ -345,6 +368,41 @@ function putBlock(id, node) {
   if (old) old.removeAttribute("id");
   stream.append(node);                        // newest block at the bottom; the old one stays as history
   turn.block = node;
+}
+
+// --- maps: Leaflet and map.js load on first use; small maps are drawn when they scroll into view ---------------------
+let mapsLoading = null, shownProduct = null;
+function maps() {
+  if (window.TorobMap) return Promise.resolve(window.TorobMap);
+  if (!mapsLoading) {
+    const add = (src) => new Promise((ok, no) => document.head.append(el("script", { src, onload: ok, onerror: no })));
+    document.head.append(el("link", { rel: "stylesheet", href: "/static/vendor/leaflet-1.9.4/leaflet.css" }));
+    mapsLoading = add("/static/vendor/leaflet-1.9.4/leaflet.js")
+      .then(() => add(document.querySelector('meta[name="map-js"]').content)).then(() => window.TorobMap)
+      .catch((e) => { mapsLoading = null; throw e; });
+  }
+  return mapsLoading;
+}
+const mapSeen = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => {
+  if (!e.isIntersecting) return;
+  mapSeen.unobserve(e.target);
+  maps().then((M) => e.target.drawMap(M)).catch(() => { e.target.classList.add("failed"); e.target.textContent = "نقشه باز نشد"; });
+}), { rootMargin: "200px" }) : null;
+// A small map card: drawn when visible; a tap opens the full map.
+function miniMap(opts, label) {
+  const node = el("div", { class: "mini-map" });
+  node.drawMap = (M) => M.mini(node, opts);
+  const box = el("div", { class: "mini-wrap" }, node,
+    opts.onOpen ? el("button", { type: "button", class: "mini-open", onclick: opts.onOpen }, icon("pin"), el("span", { text: label || "نقشه‌ی بزرگ" })) : null);
+  if (mapSeen) mapSeen.observe(node); else maps().then((M) => node.drawMap(M)).catch(() => {});
+  return box;
+}
+const openProductMap = (pid, title) => maps().then((M) => M.openProduct(pid, title)).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن."));
+const openHubMap = (h) => maps().then((M) => M.openHub(h)).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن."));
+function shopPoint(s, rank) {
+  const pr = s.price || {};
+  return { shop_id: s.shop_id, name: s.name, lat: s.lat, lon: s.lon, price: pr.min, rank, open: s.visit?.open_at_arrival,
+           building_gid: s.building_gid || null, building: s.building || null };
 }
 
 // --- generative UI: the model picks the blocks, the server fills every value from the cards on screen -----------------
@@ -385,6 +443,12 @@ function genBlock(b) {
   if (b.type === "actions") {
     return el("div", { class: "chips gen-actions" }, b.chips.map((c) => chipButton(c)));
   }
+  if (b.type === "map") {
+    const pts = b.points.map((p) => ({ ...p, pin: p.label, open: "unknown" }));
+    const prod = shownProduct;
+    return genCard("gmap", "روی نقشه", miniMap({ center: cond?.center, points: pts,
+      onOpen: prod ? () => openProductMap(prod.product_id, shortTitle(prod.title)) : null }, "همه‌ی فروشنده‌ها روی نقشه"));
+  }
   return null;
 }
 
@@ -413,6 +477,8 @@ function productBlock(d) {
   if (!items.length) return block;
   block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
     el("span", {}, `${fa(items.length)} مدل`, items.length > 1 ? el("span", { class: "hint", text: "، بکش برای بقیه" }) : null)));
+  if (d.hub) block.append(el("button", { type: "button", class: "hub-line", onclick: () => openHubMap(d.hub) },
+    icon("pin"), el("span", { text: d.hub.text }), el("span", { class: "hub-cta", text: "روی نقشه" })));
   const row = el("div", { class: "row" });
   const liveLines = [];
   for (const p of items) {
@@ -540,6 +606,12 @@ function shopBlock(d) {
   if (d.product) block.append(el("div", { class: "block-h" }, el("h3", { text: `فروشنده‌های «${shortTitle(d.product.title)}»` }),
     d.items?.length ? el("span", { text: `${fa(d.items.length + (d.more_count || 0))} فروشگاه` }) : null));
   block.append(el("div", { class: "live-line live-summary", hidden: true }));
+  if (d.product && (d.items?.length || d.more?.length)) {
+    const pts = [...(d.items || []).map((s, i) => shopPoint(s, i + 1)), ...(d.more || []).slice(0, 12).map((s) => shopPoint(s))]
+      .filter((p) => p.lat != null);
+    block.append(miniMap({ center: cond?.center, radius_km: cond?.radius_km, points: pts,
+      onOpen: () => openProductMap(d.product.product_id, shortTitle(d.product.title)) }, "همه‌ی فروشنده‌ها روی نقشه"));
+  }
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (d.relaxed?.chip) block.append(el("div", { class: "chips start-align" }, chipButton(d.relaxed.chip)));
   (d.items || []).forEach((s) => block.append(shopCard(s)));
@@ -600,6 +672,9 @@ function renderPlan(p, quiet = false) {
       p.status === "closed_at_arrival" && p.switch_to ? el("div", { class: "card alt" },
         el("div", { text: p.switch_to.text }), p.switch_to.chip ? chipButton(p.switch_to.chip) : null) : null,
       p.backup ? el("div", { class: "meta", text: `فروشگاه پشتیبان: ${p.backup.name}، ${p.backup.visit}` }) : null,
+      p.lat != null ? miniMap({ center: cond?.center, route: true,
+        points: [{ shop_id: p.shop_id, name: p.name, lat: p.lat, lon: p.lon, pin: p.name, rank: null, open: p.open_at_arrival }],
+        onOpen: () => openProductMap(p.product_id, shortTitle(p.product_title)) }, "روی نقشه") : null,
       el("a", { class: "btn red", href: nav, target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر تا فروشگاه" })),
       el("div", { class: "chips start-align" }, chipButton(p.recheck, "chip", undefined))));
   planSlot.replaceChildren(card);
@@ -696,6 +771,10 @@ async function openLocation() {
         if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return showError("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
         pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
       }, () => showError("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), { timeout: 8000 });
+    } }),
+    el("button", { type: "button", class: "opt plain", text: "روی نقشه انتخاب کن", onclick: () => {
+      sheet.close();
+      maps().then((M) => M.pick()).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن."));
     } }),
     areas.slice(0, 14).map((a) => el("button", { type: "button", class: "opt" + (cond && a.area === cond.area ? " on" : ""),
       text: `${a.area}، ${fa(a.shops_with_offers)} فروشگاه`, onclick: () => { sheet.close();
