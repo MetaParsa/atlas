@@ -206,7 +206,7 @@ def test_photo_that_the_model_reads_becomes_the_search(client, monkeypatch):
     script = lambda role, m: "شارژر آیفون" if role == "vision" else app_mod._fake_script(role, m)
     monkeypatch.setattr(app_mod, "llm", lambda: LLMClient([], {}, fake=FakeLLM(script)))
     r = client.post("/api/chat", json={"image": PHOTO, "thumb": PHOTO})
-    assert "تو عکس: شارژر آیفون" in r.text and "product_cards" in r.text
+    assert "تو عکس «شارژر آیفون» رو می‌بینم" in r.text and "product_cards" in r.text
 
 
 def test_personal_api_answers_are_never_cached(client):

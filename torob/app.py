@@ -20,7 +20,7 @@ from torob import boot, store
 from torob.agents import vision
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
-from torob.router import conditions_event, rule_route, run_turn
+from torob.router import conditions_event, rule_route, run_turn, say
 
 app = FastAPI(title="Torob in-store agent")
 
@@ -287,7 +287,10 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
             if image:   # a photo becomes a search query; an unreadable one asks for the name instead of guessing
                 yield em.emit("status", {"text": "دارم عکس رو نگاه می‌کنم…", "done": False})
                 seen = vision.identify(llm(), image, sid)
-                yield em.emit("status", {"text": f"تو عکس: {seen}" if seen else "عکس رو نشناختم", "done": True})
+                if seen:   # what the photo was read as stays in the chat (and its history), so a misreading is visible
+                    yield say(state, em, f"تو عکس «{seen}» رو می‌بینم؛ دنبالش می‌گردم.")
+                else:
+                    yield em.emit("status", {"text": "عکس رو نشناختم", "done": True})
                 if seen:
                     query = f"{text} {seen}" if text else seen
                 elif not text:
