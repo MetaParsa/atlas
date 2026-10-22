@@ -93,7 +93,10 @@
   function fit(m, latlngs, maxZoom = 17) {
     if (!latlngs.length) return m.setView([35.6935, 51.415], 14);
     if (latlngs.length === 1) return m.setView(latlngs[0], 16);
-    m.fitBounds(L.latLngBounds(latlngs).pad(0.15), { maxZoom });
+    // In the full view, keep the shops clear of the info panel: on the right on computers, at the bottom on phones.
+    const size = m.getSize(), full = V && m === V.map;
+    const pad = !full ? [0, 0] : size.x >= 700 ? [400, 20] : [20, Math.round(size.y * 0.42)];
+    m.fitBounds(L.latLngBounds(latlngs).pad(0.1), { maxZoom, paddingTopLeft: [20, 20], paddingBottomRight: pad });
   }
 
   // --- the full-screen view ------------------------------------------------------------------------------------------
