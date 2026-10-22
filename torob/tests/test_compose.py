@@ -42,7 +42,7 @@ def test_values_come_from_the_cards_and_bad_parts_are_dropped():
     out = compose.fill(raw, board(), None, _ui_chip)
     assert [b["type"] for b in out] == ["compare", "pick", "checklist"]
     cmp = out[0]
-    assert [c["title"] for c in cmp["cols"]] == ["هندزفری انکر R50i", "هندزفری شیائومی Buds"] and cmp["cols"][0]["best"]
+    assert [c["title"] for c in cmp["cols"]] == ["انکر R50i", "شیائومی Buds"] and cmp["cols"][0]["best"]   # shared words go
     assert cmp["rows"] == [{"label": "قیمت ثبت‌شده", "values": ["۱٬۴۰۰٬۰۰۰ تا ۱٬۶۰۰٬۰۰۰", "۹۰۰٬۰۰۰"]},
                            {"label": "مقاومت در برابر آب", "values": ["IPX5", "ثبت نشده"]}]
     assert out[1]["reason"] is None and out[1]["chip"]["tool"] == "show_shops" and out[1]["chip"]["args"] == {"product_id": "b"}
@@ -67,6 +67,16 @@ def test_shop_blocks_bars_and_actions():
     assert chips[0]["tool"] == "call_shop" and chips[0]["args"] == {"shop_id": "s2", "product_id": "a"}
     assert chips[1] == {"label": "کدومش قسطی می‌ده؟", "value": "کدومش قسطی می‌ده؟", "kind": "say", "tool": None, "args": {}}
     assert compose.fill({"blocks": [{"type": "actions", "items": [{"do": "call_shop", "id": "S1"}]}]}, b, None, _ui_chip) == []
+
+
+def test_prose_never_shows_ids_and_intro_keeps_to_choosing_help():
+    b = board()
+    assert b.name_ids("P1 برای باشگاه بهتره، P2 ارزون‌تره، P9 نه") == "«انکر R50i» برای باشگاه بهتره، «شیائومی Buds» ارزون‌تره، P9 نه"
+    raw = {"blocks": [{"type": "pick", "id": "P1"}, {"type": "checklist", "items": ["پلمب", "سریال"]}]}
+    assert [x["type"] for x in compose.fill(raw, b, None, _ui_chip, intro=True)] == ["checklist"]
+    assert compose._trim("یک جمله‌ی کوتاه. و یه جمله‌ی خیلی خیلی بلندتر که جا نمی‌شه", 30) == "یک جمله‌ی کوتاه."
+    assert compose.Board([dict(PRODUCTS[0], specs={"باتری": "40ساعت"})], [], {}, {}).row_value(
+        "products", dict(PRODUCTS[0], specs={"باتری": "40ساعت"}), "باتری") == "40 ساعت"
 
 
 def test_unusable_answers_give_none():

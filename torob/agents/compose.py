@@ -29,6 +29,9 @@ SHOP_ROWS = {"price": "قیمت ثبت‌شده", "age": "تازگی قیمت", 
 METRICS = {"price": ("قیمت ثبت‌شده (تومان)", min), "minutes": ("پیاده‌روی تا فروشگاه (دقیقه، تخمینی)", min),
            "sellers": ("تعداد فروشنده", max)}
 # A reason or checklist line must not state a price, a duration or a time: those come only from the data.
+_ID = re.compile(r"(?<![A-Za-z0-9])([PS][0-9]{1,2})(?![0-9])")
+_DIGIT_WORD = re.compile(r"([0-9])([ء-ی])")
+INTRO_TYPES = {"compare", "bars", "checklist"}   # after new cards: help choosing, not a second recommendation
 _STATED_NUMBER = re.compile(r"[0-9۰-۹]+\s*(?:تومان|تومن|هزار|میلیون|میلیارد|دقیقه|ساعت|روز|ماه|٪|%)|[0-9۰-۹]{1,2}:[0-9۰-۹]{2}")
 
 PROMPT = """تو بخش «چیدن جواب» دستیار خرید حضوری در تهران هستی. کارت‌هایی که الان روی صفحه است (با شناسه‌ی کوتاه):
@@ -40,7 +43,8 @@ PROMPT = """تو بخش «چیدن جواب» دستیار خرید حضوری �
 جواب را فقط به‌شکل JSON بده:
 {{"text": "...", "blocks": [...]}}
 
-text: جواب کوتاه و محاوره‌ای فارسی (حداکثر ۳ خط ساده، بدون Markdown). عدد و ساعت را فقط از همین کارت‌ها نقل کن؛ چیزی که
+text: جواب کوتاه به فارسی محاوره‌ای («بهتره»، نه «بهتر است»؛ حداکثر ۳ خط ساده، بدون Markdown). به کالا یا
+فروشگاه با اسم کوتاهش اشاره کن (مثلاً «R50i»)، هرگز با شناسه‌هایی مثل P1. عدد و ساعت را فقط از همین کارت‌ها نقل کن؛ چیزی که
 نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودیِ تأییدشده ندان.
 
 blocks: صفر تا ۳ بلوک، فقط وقتی واقعاً به تصمیم کمک می‌کنند (برای یک سؤال ساده، بلوک لازم نیست). انواع:
@@ -60,8 +64,8 @@ blocks: صفر تا ۳ بلوک، فقط وقتی واقعاً به تصمیم �
 
 TASK_ANSWER = "کاربر پرسید: «{question}»\nبه همین سؤال جواب بده."
 TASK_INTRO = ("کاربر گفته بود: «{question}». کارت‌های محصول همین الان نشان داده شد. کمکش کن بین آن‌ها انتخاب کند: یک compare "
-              "با ردیف‌هایی که برای خواسته‌ی خودش مهم است، و اگر برای این نوع کالا چک‌کردن چیزی در مغازه مهم است، یک checklist. "
-              "text یک جمله‌ی کوتاه باشد.")
+              "با ردیف‌هایی که برای خواسته‌ی خودش مهم است، و اگر برای این نوع کالا چک‌کردن چیزی در مغازه مهم است، یک checklist "
+              "(pick و actions نه؛ کارت‌ها دکمه‌ی خودشان را دارند). text فقط یک جمله‌ی کوتاه باشد، حداکثر ۲۰ کلمه.")
 
 
 def product_fact(card: dict, specs: list[tuple[str, str]]) -> dict:
@@ -95,6 +99,12 @@ class Board:
                              "live_price": self.live.get(x["shop_id"]), "stock": self.stock(x)} for k, x in self.s.items()]
         return json.dumps(out, ensure_ascii=False)
 
+    def name_ids(self, text: str) -> str:
+        """Ids the model slipped into prose («P1») become the names the shopper sees on the cards."""
+        pn = dict(zip(self.p, short_names([x["title"] for x in self.p.values()]))) if self.p else {}
+        names = {**pn, **{k: x["name"] for k, x in self.s.items()}}
+        return _ID.sub(lambda m: f"«{names[m.group(1)]}»" if m.group(1) in names else m.group(1), text)
+
     def stock(self, shop: dict) -> str:
         c = self.calls.get(shop["shop_id"])
         if not c:
@@ -109,7 +119,8 @@ class Board:
                 return "ثبت نشده" if not lo else format_toman(lo) if lo == hi or not hi else f"{format_toman(lo)} تا {format_toman(hi)}"
             if key == "sellers":
                 return f"{to_fa_digits(x['sellers'])} {x['scope']}"
-            return x["specs"].get(key)
+            v = x["specs"].get(key)
+            return _DIGIT_WORD.sub(r"\1 \2", v) if v else v   # «40ساعت» → «40 ساعت»
         if key == "price":
             return format_toman(x["price_min"]) if x["price_min"] else "ثبت نشده"
         if key == "age":
@@ -138,19 +149,38 @@ class Board:
         return None
 
 
+def _trim(t: str, limit: int) -> str:
+    """At most `limit` characters, cut at a sentence end (or a word) rather than mid-word."""
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    end = max(cut.rfind(c) for c in ".!؟?؛")
+    return cut[:end + 1] if end > limit // 3 else cut[:cut.rfind(" ")].rstrip("،, ") + "…"
+
+
 def _clean(text, limit: int) -> str | None:
     """Short free text from the model, or None if empty or if it states a price, duration or time."""
-    t = " ".join(plain_text(str(text or "")).split())[:limit]
+    t = _trim(" ".join(plain_text(str(text or "")).split()), limit)
     return t if t and not _STATED_NUMBER.search(t) else None
 
 
-def fill(raw: dict, board: Board, selected_product_id: str | None, chip_factory) -> list[dict]:
+def short_names(titles: list[str]) -> list[str]:
+    """Column names that differ: words every title shares («هندزفری بلوتوثی انکر مدل Soundcore») are dropped."""
+    words = [t.split() for t in titles]
+    common = set(words[0]).intersection(*map(set, words[1:])) if len(words) > 1 else set()
+    out = [" ".join(w for w in ws if w not in common) for ws in words]
+    return out if all(out) and len(set(out)) == len(out) else titles
+
+
+def fill(raw: dict, board: Board, selected_product_id: str | None, chip_factory, intro: bool = False) -> list[dict]:
     """The model's blocks → blocks the page can draw, every value read from `board`. Invalid parts are dropped."""
     out = []
     for b in (raw.get("blocks") or [])[:MAX_BLOCKS + 2]:
         if not isinstance(b, dict) or len(out) == MAX_BLOCKS:
             continue
         kind = b.get("type")
+        if intro and kind not in INTRO_TYPES:
+            continue
         of = "products" if b.get("of") == "products" else "shops"
         pool = board.p if of == "products" else board.s
         ids = [i for i in dict.fromkeys(str(i) for i in (b.get("ids") or [])) if i in pool][:4]
@@ -165,8 +195,9 @@ def fill(raw: dict, board: Board, selected_product_id: str | None, chip_factory)
                     rows.append({"label": allowed.get(key, key), "values": [v or "ثبت نشده" for v in vals]})
             if rows:
                 best = str(b.get("best") or "")
-                cols = [{"title": pool[i]["title"] if of == "products" else pool[i]["name"],
-                         "sub": pool[i]["label"] if of == "products" else pool[i]["where"], "best": i == best} for i in ids]
+                names = [pool[i]["title"] if of == "products" else pool[i]["name"] for i in ids]
+                cols = [{"title": short, "full": name, "sub": pool[i]["label"] if of == "products" else pool[i]["where"],
+                         "best": i == best} for i, name, short in zip(ids, names, short_names(names))]
                 out.append({"type": "compare", "of": of, "cols": cols, "rows": rows[:5]})
         elif kind == "bars" and b.get("metric") in METRICS and len(ids) >= 2:
             items = [(i, board.metric(of, pool[i], b["metric"])) for i in ids]
@@ -174,9 +205,10 @@ def fill(raw: dict, board: Board, selected_product_id: str | None, chip_factory)
             if len(items) >= 2:
                 label, best_of = METRICS[b["metric"]]
                 best = best_of(v for _, v in items)
+                names = short_names([pool[i]["title"] if of == "products" else pool[i]["name"] for i, _ in items])
                 out.append({"type": "bars", "label": label, "metric": b["metric"], "items": [
-                    {"name": pool[i]["title"] if of == "products" else pool[i]["name"], "value": v, "best": v == best,
-                     "text": format_toman(v) if b["metric"] == "price" else to_fa_digits(v)} for i, v in items]})
+                    {"name": n, "value": v, "best": v == best,
+                     "text": format_toman(v) if b["metric"] == "price" else to_fa_digits(v)} for n, (i, v) in zip(names, items)]})
         elif kind == "pick":
             i = str(b.get("id") or "")
             reason = _clean(b.get("reason"), 160)
@@ -228,8 +260,9 @@ def compose(llm: LLMClient, board: Board, question: str, session_id: str, *, int
         return None
     if not isinstance(raw, dict):
         return None
-    text = plain_text(str(raw.get("text") or ""))[:500].strip() if not intro else (_clean(raw.get("text"), 160) or "")
-    blocks = fill(raw, board, selected_product_id, chip_factory)
+    text = board.name_ids(plain_text(str(raw.get("text") or "")).strip())
+    text = _trim(text, 500) if not intro else (_clean(text, 160) or "")
+    blocks = fill(raw, board, selected_product_id, chip_factory, intro=intro)
     if not text and not blocks:
         return None
     return {"text": text, "blocks": blocks}

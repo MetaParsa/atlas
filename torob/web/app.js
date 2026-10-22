@@ -348,7 +348,7 @@ function putBlock(id, node) {
 }
 
 // --- generative UI: the model picks the blocks, the server fills every value from the cards on screen -----------------
-const genTag = () => el("span", { class: "gen-tag" }, icon("spark"), el("span", { text: "چیده‌شده برای سؤالت" }));
+const genTag = () => el("span", { class: "gen-tag" }, icon("spark"), el("span", { text: "چیده‌شده با هوش مصنوعی" }));
 function genCard(cls, title, ...kids) {
   return el("div", { class: `card gcard ${cls}` }, el("div", { class: "gen-h" }, el("span", { class: "gen-title", text: title }), genTag()), ...kids);
 }
@@ -358,7 +358,7 @@ function genBlock(b) {
     const cell = (tag, i, ...kids) => el(tag, { class: i === best ? "best" : null }, ...kids);
     const t = el("table", { class: "gtable" },
       el("thead", {}, el("tr", {}, el("th", { class: "rowh" }),
-        b.cols.map((c, i) => cell("th", i, el("div", { class: "ct", text: shortTitle(c.title), title: c.title }),
+        b.cols.map((c, i) => cell("th", i, el("div", { class: "ct", text: c.title, title: c.full || c.title }),
           i === best ? el("span", { class: "best-tag" }, icon("check"), "بهترین برای تو") : el("div", { class: "cs", text: c.sub || "" }))))),
       el("tbody", {}, b.rows.map((r) => el("tr", {}, el("th", { class: "rowh", scope: "row", text: r.label }),
         r.values.map((v, i) => cell("td", i, el("bdi", { text: v })))))));
@@ -367,7 +367,7 @@ function genBlock(b) {
   if (b.type === "bars") {
     const max = Math.max(...b.items.map((i) => i.value)) || 1;
     return genCard("gbars", b.label, el("div", { class: "bars" }, b.items.map((i) => el("div", { class: "brow" + (i.best ? " best" : "") },
-      el("span", { class: "bname", text: shortTitle(i.name), title: i.name }),
+      el("span", { class: "bname", text: i.name, title: i.name }),
       el("span", { class: "btrack" }, el("span", { class: "bfill", style: `inline-size:${Math.max(4, (i.value / max) * 100)}%` })),
       el("bdi", { class: "bval", text: i.text })))));
   }
