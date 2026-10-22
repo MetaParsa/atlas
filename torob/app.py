@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, HTTPException, Request
+from fastapi import Cookie, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -161,9 +161,13 @@ def index():
     return HTMLResponse(_index_html(stamp), headers={"Cache-Control": "no-cache"})
 
 
+PRIVATE = "private, no-store"   # per-visitor answers: never kept by the CDN (ArvanCloud) or any shared cache
+
+
 @app.get("/api/state")
-def session_state(sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+def session_state(response: Response, sid: str | None = Cookie(default=None, max_length=64)) -> dict:
     """What the strip needs on page load (no turn, no LLM)."""
+    response.headers["Cache-Control"] = PRIVATE
     _, state = appdb().load(sid)
     return {"conditions": conditions_event(state), "has_results": state.last_block_kind != "none",
             "plan": state.plan}
@@ -176,8 +180,9 @@ def popular() -> dict:
 
 
 @app.get("/api/history")
-def history(sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+def history(response: Response, sid: str | None = Cookie(default=None, max_length=64)) -> dict:
     """This session's conversation (only the caller's own cookie), so a reload shows the chat again."""
+    response.headers["Cache-Control"] = PRIVATE
     if not sid:
         return {"events": []}
     return {"events": [{"event": e["event"], "data": e["data"]} for e in appdb().events(sid)[-HISTORY_MAX:]]}

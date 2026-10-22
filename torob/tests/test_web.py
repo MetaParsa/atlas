@@ -207,3 +207,10 @@ def test_photo_that_the_model_reads_becomes_the_search(client, monkeypatch):
     monkeypatch.setattr(app_mod, "llm", lambda: LLMClient([], {}, fake=FakeLLM(script)))
     r = client.post("/api/chat", json={"image": PHOTO, "thumb": PHOTO})
     assert "تو عکس: شارژر آیفون" in r.text and "product_cards" in r.text
+
+
+def test_personal_api_answers_are_never_cached(client):
+    for path in ("/api/state", "/api/history"):
+        assert client.get(path).headers["cache-control"] == "private, no-store"
+    meta = (WEB / "radish-sprites.js").read_text(encoding="utf-8")
+    assert '"sheet":"/static/radish-sheet.png?v=' in meta   # the CDN caches /static, so the sheet URL carries its hash

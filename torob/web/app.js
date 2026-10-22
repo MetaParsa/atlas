@@ -106,7 +106,7 @@ const Radish = (() => {
   }
 
   sheet.onload = () => draw(frame);
-  sheet.src = "/static/radish-sheet.png";
+  sheet.src = S.sheet || "/static/radish-sheet.png";   // versioned by content (the CDN caches /static)
   if (!still) setTimeout(step, 0); else draw(S.states.idle.loop[0]);
   return {
     attach(c) { c.width = S.w; c.height = S.h; canvases.add(c); draw(frame); },
