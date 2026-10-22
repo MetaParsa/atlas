@@ -57,9 +57,9 @@ def alternative(product_id: str, cond: Conditions, failed_shop: dict, reason: st
         if o.shop["shop_id"] not in tried and o.open_state != "no":
             card = _mini(o, now)
             delta = _delta(o.price_min, ref)
-            text = f"{why} → {card['name']}، {card['visit']} · {card['price']}" + (f" ({delta})" if delta else "")
+            text = f"{why} → {card['name']}، {card['visit']}، {card['price']}" + (f" ({delta})" if delta else "")
             if res.relaxed:
-                text += f" · {res.relaxed['label']}"
+                text += f"، {res.relaxed['label']}"
             label = f"از {card['name']} بپرسم تا رسیدنم نگهش داره؟" if hold else f"به {card['name']} زنگ بزنم؟"
             return {"kind": "shop", "reason": why, "text": text, "shop": card, "relaxed": res.relaxed,
                     "chip": call_chip(o.shop["shop_id"], product_id, label, hold=hold)}
@@ -68,7 +68,7 @@ def alternative(product_id: str, cond: Conditions, failed_shop: dict, reason: st
         delta = _delta(similar["price_min"], ref)
         over = ""
         if cond.budget_max and similar["price_min"] > cond.budget_max:
-            over = f" · {format_price_short(similar['price_min'] - cond.budget_max)} بالاتر از بودجه"
+            over = f"، {format_price_short(similar['price_min'] - cond.budget_max)} بالاتر از بودجه"
         return {"kind": "product", "reason": why, "product": similar,
                 "text": (f"{why} → «{similar['title']}» {similar['where_text']}، قیمت ثبت‌شده از "
                          f"{format_toman(similar['price_min'])}" + (f" ({delta})" if delta else "") + over),

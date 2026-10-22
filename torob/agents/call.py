@@ -276,5 +276,5 @@ def price_change_text(r: CallResult) -> str | None:
     if r.price_today is None:
         return None
     if r.price_registered is None:
-        return f"قیمت امروز {format_toman(r.price_today)} (قیمت ثبت‌شده نداشت · شبیه‌سازی)"
+        return f"قیمت امروز {format_toman(r.price_today)} (قیمت ثبت‌شده نداشت، شبیه‌سازی)"
     return f"{format_toman(r.price_registered)} → {format_toman(r.price_today)} (شبیه‌سازی)"

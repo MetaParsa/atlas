@@ -339,7 +339,7 @@ def product_has_hours(items: list[ShopOffer]) -> bool:
 # --- wording (R8) -------------------------------------------------------------------------------------------------
 
 def where_line(s: dict) -> str:
-    """«پاساژ علاءالدین · طبقه ۲ · واحد ۲۱۴» from parsed fields only; else the written address."""
+    """«پاساژ علاءالدین، طبقه ۲، واحد ۲۱۴» from parsed fields only; else the written address."""
     parts = []
     if s.get("building"):
         parts.append(f"{s.get('building_kind') or 'پاساژ'} {s['building']}")
@@ -350,7 +350,7 @@ def where_line(s: dict) -> str:
         parts.append(f"واحد {to_fa_digits(s['unit'])}")
     elif s.get("plaque"):
         parts.append(f"پلاک {to_fa_digits(s['plaque'])}")
-    return " · ".join(parts) if parts else (s.get("address") or "آدرس ثبت نشده")
+    return "، ".join(parts) if parts else (s.get("address") or "آدرس ثبت نشده")
 
 
 def _day_label(dt: datetime, now: datetime) -> str:
@@ -362,12 +362,12 @@ def _day_label(dt: datetime, now: datetime) -> str:
 def visit_line(o: ShopOffer, now: datetime) -> str:
     move = f"{to_fa_digits(o.minutes)} دقیقه {'پیاده' if o.mode == 'walk' else 'با ماشین'} (تخمینی)"
     if o.open_state in ("yes", "tight"):
-        state = f"باز تا {to_fa_digits(o.closes.strftime('%H:%M'))}" + (" · وقت کمه" if o.open_state == "tight" else "")
+        state = f"باز تا {to_fa_digits(o.closes.strftime('%H:%M'))}" + ("، وقت کمه" if o.open_state == "tight" else "")
     elif o.open_state == "no":
-        state = "تا برسی بسته‌ست" + (f" · {_day_label(o.next_open, now)} باز می‌کنه" if o.next_open else "")
+        state = "تا برسی بسته‌ست" + (f"، {_day_label(o.next_open, now)} باز می‌کنه" if o.next_open else "")
     else:
         state = "ساعت کاری ثبت نشده"
-    return f"{move} · {state}"
+    return f"{move}، {state}"
 
 
 def price_line(o: ShopOffer, now: datetime) -> dict:
@@ -384,7 +384,7 @@ def price_line(o: ShopOffer, now: datetime) -> dict:
 def payment_labels(o: ShopOffer) -> list[str]:
     out = []
     for prov, ch in o.payments:
-        out.append(f"{prov} · {'حضوری' if ch == 'in_person' else 'حضوری بودنش ثبت نشده'}")
+        out.append(f"{prov}، {'حضوری' if ch == 'in_person' else 'حضوری بودنش ثبت نشده'}")
     return out
 
 

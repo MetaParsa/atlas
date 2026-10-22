@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "torob",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "torob.app:app", "--port", "8770"],
+      "port": 8770
+    }
+  ]
+}

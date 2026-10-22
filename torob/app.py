@@ -6,9 +6,11 @@ import threading
 import time
 from collections import defaultdict, deque
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import Cookie, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from core.agent_loop import Emitter
@@ -16,7 +18,7 @@ from core.llm import FakeLLM, LLMClient, from_env
 from torob import store
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
-from torob.router import rule_route, run_turn
+from torob.router import conditions_event, rule_route, run_turn
 
 app = FastAPI(title="Torob in-store agent")
 STREAM_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
@@ -102,6 +104,30 @@ def areas() -> list[dict]:
 class ChatIn(BaseModel):
     text: str | None = Field(None, max_length=MAX_TEXT)
     chip: Chip | None = None
+
+
+WEB = Path(__file__).parent / "web"
+app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+@app.get("/", response_class=FileResponse)
+def index():
+    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/state")
+def session_state(sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+    """What the strip needs on page load (no turn, no LLM)."""
+    _, state = appdb().load(sid)
+    return {"conditions": conditions_event(state), "has_results": state.last_block_kind != "none"}
+
+
+@app.post("/api/reset")
+def reset(sid: str | None = Cookie(default=None, max_length=64)) -> JSONResponse:
+    """«جدید»: forget this session's search (a new session id)."""
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("sid")
+    return resp
 
 
 class RefineIn(BaseModel):

@@ -331,14 +331,14 @@ def why_line(p: Pick, budget: int | None = None) -> str:
         parts.append(f"بیشترین فروشنده {p.where} ({to_fa_digits(sellers)} تا)")
     else:
         if p.role == "cheapest":
-            parts.append("قیمت معمولش از بقیه‌ی این‌ها کمتره ·")
+            parts.append("قیمت معمولش از بقیه‌ی این‌ها کمتره،")
         parts.append(f"{to_fa_digits(sellers)} فروشنده {p.where}")
     if p.low:
         scope = "" if p.area_priced or not p.in_area else " (در کل تهران)"
-        parts.append(f"· قیمت ثبت‌شده از {format_price_short(p.low)}{scope}")
+        parts.append(f"، قیمت ثبت‌شده از {format_price_short(p.low)}{scope}")
     if p.in_area and p.area.fresh:
-        parts.append(f"· {to_fa_digits(p.area.fresh)} قیمت این ماه به‌روز شده")
-    return " ".join(parts)
+        parts.append(f"، {to_fa_digits(p.area.fresh)} قیمت این ماه به‌روز شده")
+    return " ".join(parts).replace(" ،", "،")
 
 
 def _question(need: Need, cond: Conditions, price: dict, picks: list[Pick]) -> dict | None:

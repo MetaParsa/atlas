@@ -117,8 +117,8 @@ def test_category_only_shops_are_not_sellers(charger):
 
 def test_where_line_uses_parsed_fields_only():
     assert S.where_line({"building_kind": "پاساژ", "building": "علاءالدین", "floor": "۲", "unit": "214"}) == \
-        "پاساژ علاءالدین · طبقه ۲ · واحد ۲۱۴"
-    assert S.where_line({"floor": "همکف", "plaque": "7"}) == "همکف · پلاک ۷"
+        "پاساژ علاءالدین، طبقه ۲، واحد ۲۱۴"
+    assert S.where_line({"floor": "همکف", "plaque": "7"}) == "همکف، پلاک ۷"
     assert S.where_line({"address": "خیابان X"}) == "خیابان X"
 
 

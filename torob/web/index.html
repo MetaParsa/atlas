@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <title>دستیار خرید حضوری</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <button id="loc" class="loc" type="button" aria-label="انتخاب محدوده">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span id="loc-label">جمهوری / فردوسی</span>
+    </button>
+    <span class="brand">دستیار خرید حضوری</span>
+    <button id="reset" class="ghost" type="button">جدید</button>
+  </header>
+
+  <nav id="strip" class="strip" hidden aria-label="شرایط جست‌وجو">
+    <button type="button" data-cond="radius">محدوده</button>
+    <button type="button" data-cond="budget">بودجه</button>
+    <button type="button" data-cond="payment">پرداخت</button>
+    <button type="button" data-cond="open">باز بودن</button>
+    <button type="button" data-cond="arrive">رسیدن</button>
+    <span id="demo-time" class="demo" hidden></span>
+  </nav>
+
+  <button id="plan-bar" class="plan-bar" type="button" hidden></button>
+  <section id="plan-slot" aria-live="polite"></section>
+
+  <main id="stream" aria-live="polite">
+    <section id="start" class="start">
+      <h1>چی لازم داری؟</h1>
+      <p>بگو دنبال چی هستی؛ مدل‌ها رو مقایسه می‌کنم، فروشنده‌های نزدیک رو پیدا می‌کنم و ازشون می‌پرسم.</p>
+      <div class="chips">
+        <button type="button" class="chip" data-say="هندزفری بلوتوثی تا ۳ میلیون">هندزفری بلوتوثی تا ۳ میلیون</button>
+        <button type="button" class="chip" data-say="شارژر اصل آیفون">شارژر اصل آیفون</button>
+        <button type="button" class="chip" data-say="گوشی سامسونگ S25 FE قسطی">سامسونگ S25 FE قسطی</button>
+      </div>
+      <p class="fine">داده‌ها از دیتاست ترب (هفته‌ی پیش) · نام و شماره‌ی فروشگاه‌ها ساختگی‌اند؛ تماس‌ها شبیه‌سازی است.</p>
+    </section>
+  </main>
+
+  <form id="composer" class="composer" autocomplete="off">
+    <input id="text" name="text" maxlength="1000" placeholder="مثلاً: شارژر سامسونگ ۲۵ وات" aria-label="پیام">
+    <button id="send" type="submit" aria-label="ارسال">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12l18-9-6 18-3-7-9-2z"/></svg>
+    </button>
+  </form>
+  <footer class="foot">نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است.</footer>
+</div>
+
+<dialog id="sheet" class="sheet">
+  <form method="dialog" id="sheet-form">
+    <h2 id="sheet-title"></h2>
+    <div id="sheet-body"></div>
+    <div class="sheet-actions"><button value="cancel" class="ghost">بستن</button></div>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

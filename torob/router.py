@@ -15,14 +15,14 @@ from pydantic import BaseModel, Field, ValidationError
 
 from core.agent_loop import Emitter, Tool, tool_loop
 from core.llm import LLMClient
-from core.text import format_million, format_toman, normalize_fa, to_fa_digits, to_latin_digits
+from core.text import format_million, format_price_short, format_toman, normalize_fa, to_fa_digits, to_latin_digits
 from torob import store
 from torob import clock
 from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import followup
 from torob.agents import shops as shops_agent
-from torob.models import Chip, Conditions, Need, RouterOutput, SessionState
+from torob.models import Chip, Conditions, Location, Need, RouterOutput, SessionState
 
 ROUTER_PROMPT = (Path(__file__).parent / "prompts" / "router.md").read_text(encoding="utf-8")
 
@@ -155,9 +155,10 @@ def apply_patch(state: SessionState, patch: dict) -> list[str]:
 def conditions_event(state: SessionState) -> dict:
     c = state.conditions
     return {"area": c.center.label, "radius_km": c.radius_km, "budget_max": c.budget_max,
-            "budget_label": f"تا {format_million(c.budget_max)}" if c.budget_max else None,
+            "budget_label": f"تا {format_price_short(c.budget_max)}" if c.budget_max else None,
             "payment": c.payment, "fast_delivery": c.fast_delivery, "open": c.open,
-            "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None}
+            "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None,
+            "demo_time": clock.now().strftime("%H:%M") if clock.is_demo() else None}
 
 
 def say(state: SessionState, em: Emitter, text: str) -> str:
@@ -246,6 +247,22 @@ def _chip_set_conditions(state: SessionState, em: Emitter, args: SetConditionsAr
         yield from rerun_latest(state, em)
 
 
+class SetLocationArgs(DirectTool):
+    """GPS («مکان من») or an area from /api/areas. Tehran only."""
+    lat: float = Field(ge=35.5, le=35.9)
+    lng: float = Field(ge=51.0, le=51.8)
+    label: str = Field(max_length=40)
+    source: Literal["gps", "area"] = "area"
+
+
+@direct("set_location", SetLocationArgs)
+def _chip_set_location(state: SessionState, em: Emitter, args: SetLocationArgs) -> Iterator[str]:
+    state.conditions = state.conditions.model_copy(update={"center": Location(
+        lat=args.lat, lng=args.lng, label=args.label, source=args.source)})
+    yield em.emit("conditions", conditions_event(state))
+    yield from rerun_latest(state, em)
+
+
 class CallShopArgs(DirectTool):
     shop_id: str = Field(max_length=64)
     product_id: str = Field(max_length=64)
@@ -304,8 +321,8 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
                                         llm=em.llm, session_id=em.session_id)
     s = o.shop
     yield em.emit("call_start", {
-        "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']} · شبیه‌سازی",
-        "reasons": "می‌پرسم چون: " + " · ".join(plan.reasons),
+        "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']}، شبیه‌سازی",
+        "reasons": "می‌پرسم چون: " + "، ".join(plan.reasons),
         "real_shop_note": "با این فروشگاه واقعاً تماس گرفته نشد." if s["name_is_real"] else None})
     yield em.emit("status", {"text": "در حال تماس…", "done": False})
     for who, text in plan.lines:
@@ -403,6 +420,7 @@ def _card_with_button(card: dict) -> dict:
 
 def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterator[str]:
     """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
+    yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
     yield em.emit("status", {"text": "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
     res = advisor.pick_products(state.need, state.conditions)
     if res.named:
@@ -411,7 +429,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
         _select_product(state, card["product_id"])
         n = res.named.area.sellers
         found = f"{to_fa_digits(n)} فروشنده {res.named.where}" if n else "نزدیکت فروشنده‌ای ثبت نشده"
-        yield em.emit("status", {"text": f"همین مدل رو پیدا کردم · {found}", "done": True})
+        yield em.emit("status", {"text": f"همین مدل رو پیدا کردم، {found}", "done": True})
         yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(card)],
                                         "compare_rows": [], "notes": res.notes})
         yield from show_shops(state, em)   # R7: a named model skips straight to its sellers
@@ -438,6 +456,7 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
     if not state.selected_product_id:
         yield say(state, em, "اول یه مدل انتخاب کن تا فروشنده‌هاش رو پیدا کنم.")
         return
+    yield em.emit("conditions", conditions_event(state))
     yield em.emit("status", {"text": "دارم فروشنده‌های نزدیک رو مقایسه می‌کنم…", "done": False})
     res = shops_agent.find_shops(state.selected_product_id, state.conditions)
     now = clock.now()
