@@ -354,8 +354,10 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
         return
     now = clock.now()
     call_id = f"c{len(state.calls) + 1}"
+    earlier = next((c for c in reversed(state.calls.values()) if c.get("shop_id") == shop_id
+                    and c.get("product_id") == res.product["product_id"] and c.get("outcome") == "ok"), None)
     plan, result = call_engine.run_call(o, res.product, state.conditions.payment, call_id, want_hold=hold,
-                                        llm=em.llm, session_id=em.session_id)
+                                        llm=em.llm, session_id=em.session_id, earlier=earlier)
     s = o.shop
     yield em.emit("call_start", {
         "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']}، شبیه‌سازی",

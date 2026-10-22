@@ -53,6 +53,7 @@ class CallResult:
     at: str                         # HH:MM (demo clock)
     simulated: bool = True
     outcome: str = "ok"             # ok | no_answer | unavailable
+    asked: list[str] = field(default_factory=list)   # every question this shop has answered about this product
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -63,6 +64,7 @@ class CallPlan:
     questions: list[str]            # keys: stock, price, hours, credit, location, hold
     reasons: list[str]              # «می‌پرسم چون: …» (R3)
     lines: list[tuple[str, str]] = field(default_factory=list)   # (agent|shop, text)
+    callback: bool = False          # the same shop was reached earlier for this product: only new questions
 
 
 # --- demo control (A2) ----------------------------------------------------------------------------------------
@@ -131,7 +133,10 @@ def make_truth(o: ShopOffer, product: dict, now: datetime) -> Truth:
 
 # --- questions (code, from what's unknown or old) --------------------------------------------------------------
 
-def plan_questions(o: ShopOffer, product: dict, payment_filter: str, now: datetime, want_hold: bool) -> CallPlan:
+def plan_questions(o: ShopOffer, product: dict, payment_filter: str, now: datetime, want_hold: bool,
+                   asked: frozenset[str] = frozenset()) -> CallPlan:
+    """`asked`: what an earlier answered call to this shop already asked about this product (a call-back asks only
+    what's new, e.g. «تا رسیدنم نگهش می‌دارید؟»)."""
     q, why = ["stock"], []
     age, old = price_age_label(o.changed_at, now)
     if not o.priced:
@@ -155,6 +160,11 @@ def plan_questions(o: ShopOffer, product: dict, payment_filter: str, now: dateti
     if want_hold:
         q.append("hold")
         why.append("خواستی نگهش دارن")
+    if asked:
+        keep = [k for k in q if k not in asked and k != "stock"]
+        reasons = {"price": "قیمت", "hours": "ساعت", "credit": "قسطی", "location": "پاساژ", "hold": "نگه"}
+        why = [w for w in why if any(reasons.get(k, "#") in w for k in keep)] or ["دوباره زنگ زدم"]
+        return CallPlan(keep, why, callback=True)
     if len(why) == 0:
         why.append("موجودی رو هیچ‌وقت توی داده نمی‌شه دید")
     return CallPlan(q, why)
@@ -175,13 +185,16 @@ def _price_words(p: int) -> str:
 def script(plan: CallPlan, truth: Truth, product_title: str, rng: random.Random) -> list[tuple[str, str]]:
     """Agent and shop lines. Every shop sentence restates a truth field — nothing else."""
     short = product_title.split("|")[0].strip()[:60]
-    lines = [("agent", f"{rng.choice(_GREET)} «{short}» رو دارید؟")]
-    if not truth.answers:
-        return lines
-    if not truth.in_stock:
-        lines.append(("shop", rng.choice(_NO)))
-        return lines
-    lines.append(("shop", rng.choice(_YES)))
+    if plan.callback:   # we spoke a few minutes ago: no second introduction, no repeated questions
+        lines = [("agent", f"سلام دوباره؛ برای همون «{short}» زنگ زدم."), ("shop", "بله، بفرمایید.")]
+    else:
+        lines = [("agent", f"{rng.choice(_GREET)} «{short}» رو دارید؟")]
+        if not truth.answers:
+            return lines
+        if not truth.in_stock:
+            lines.append(("shop", rng.choice(_NO)))
+            return lines
+        lines.append(("shop", rng.choice(_YES)))
     asks, answers = [], []
     if "price" in plan.questions and truth.price_today:
         asks.append("قیمت امروزش چنده؟")
@@ -236,10 +249,13 @@ def _same_numbers(a: str, b: str) -> bool:
 
 
 def run_call(o: ShopOffer, product: dict, payment_filter: str, call_id: str, *, want_hold: bool = False,
-             llm=None, session_id: str = "-") -> tuple[CallPlan, CallResult]:
+             llm=None, session_id: str = "-", earlier: dict | None = None) -> tuple[CallPlan, CallResult]:
+    """`earlier`: this shop's answered call about this product in the session, if any. A call-back asks only what's
+    new and carries the earlier answers (same shop, minutes ago) into its result."""
     now = clock.now()
     truth = make_truth(o, product, now)
-    plan = plan_questions(o, product, payment_filter, now, want_hold)
+    asked = frozenset(earlier.get("asked") or ["stock", "price", "hours", "credit", "location"]) if earlier else frozenset()
+    plan = plan_questions(o, product, payment_filter, now, want_hold, asked)
     rng = _rng(o.shop["shop_id"] + "|script", product["product_id"])
     plan.lines = script(plan, truth, product["title"], rng)
     if llm is not None and os.environ.get("CALL_LLM") == "1" and getattr(llm, "enabled", False):
@@ -258,6 +274,11 @@ def run_call(o: ShopOffer, product: dict, payment_filter: str, call_id: str, *, 
         location=(truth.location if truth.answers and truth.in_stock and "location" in plan.questions else None),
         hold_until=(truth.hold_until if truth.answers and truth.in_stock and want_hold else None),
         at=now.strftime("%H:%M"), outcome=outcome)
+    if plan.callback and earlier:
+        for k in ("price_today", "price_diff_pct", "closes_today", "credit", "location", "hold_until"):
+            if getattr(res, k) is None and earlier.get(k) is not None:
+                setattr(res, k, earlier[k])
+    res.asked = sorted(set(plan.questions) | asked)
     return plan, res
 
 

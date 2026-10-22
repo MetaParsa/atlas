@@ -174,3 +174,21 @@ def test_ask_results_answers_from_shown_shops():
     to_shops(s)
     ev = turn(s, text="کدومش زودتر می‌بنده؟")
     assert [e for e, _ in ev][-2:] == ["message", "done"] and "می‌بنده" in dict(ev)["message"]["text"]
+
+
+def test_a_call_back_asks_only_whats_new():
+    import random
+    from datetime import datetime
+    from types import SimpleNamespace as NS
+    from torob.agents.call import Truth, plan_questions, script
+    o = NS(priced=True, changed_at="2026-09-01T10:00:00+03:30", open_state="unknown",
+           shop={"hours_known": False, "building": "پاساژ علاءالدین"})
+    now = datetime.fromisoformat("2026-10-22T20:40:00+03:30")
+    first = plan_questions(o, {}, "any", now, want_hold=False)
+    assert {"stock", "price", "hours", "location"} <= set(first.questions) and not first.callback
+    again = plan_questions(o, {}, "any", now, want_hold=True, asked=frozenset(first.questions))
+    assert again.callback and again.questions == ["hold"] and again.reasons == ["خواستی نگهش دارن"]
+    truth = Truth(True, True, 3_020_000, True, None, [], "طبقه ۵، واحد ۵۰۶", "21:00")
+    lines = script(again, truth, "هدفون انکر R50i", random.Random(1))
+    assert lines[0][1].startswith("سلام دوباره") and "قیمت" not in " ".join(t for _, t in lines)
+    assert "نگهش می‌دارید" in lines[-2][1] and "۲۱:۰۰" in lines[-1][1]
