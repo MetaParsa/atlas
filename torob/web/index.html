@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#15202b" media="(prefers-color-scheme: dark)">
   <title>دستیار خرید حضوری</title>
+  <link rel="icon" type="image/svg+xml" href="/static/torob-logo.svg">
   <link rel="preload" href="/static/fonts/Vazirmatn-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -13,9 +14,7 @@
 <div id="app">
   <header class="top">
     <div class="bar">
-      <span class="logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 1 0-13 0c0 5.4 6.5 11 6.5 11z"/><path d="M9.5 9.5h5l-.6 3.5h-3.8z"/><path d="M10.6 9.5a1.4 1.4 0 0 1 2.8 0"/></svg>
-      </span>
+      <img class="logo" src="/static/torob-logo.svg" alt="" width="34" height="34">
       <div class="brand">
         <strong>دستیار خرید حضوری</strong>
         <span>روی داده‌های ترب</span>
@@ -47,6 +46,7 @@
   <main id="stream" aria-live="polite">
     <section id="start" class="start">
       <div class="hero">
+        <img class="hero-logo" src="/static/torob-logo.svg" alt="" width="76" height="76">
         <h1>چی لازم داری؟</h1>
         <p>بگو دنبال چی هستی؛ مدل‌ها رو مقایسه می‌کنم، فروشنده‌های نزدیک و باز رو پیدا می‌کنم و به‌جات ازشون می‌پرسم.</p>
       </div>
@@ -89,7 +89,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12l18-9-6 18-3-7-9-2z"/></svg>
     </button>
   </form>
-  <footer class="foot">نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است. <a href="/admin">پشت صحنه</a></footer>
+  <footer class="foot">نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است. پروژه‌ی هکاتون، محصول رسمی ترب نیست. <a href="/admin">پشت صحنه</a></footer>
 </div>
 
 <dialog id="sheet" class="sheet">
