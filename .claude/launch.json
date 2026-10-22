@@ -6,6 +6,12 @@
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "uvicorn", "torob.app:app", "--port", "8770"],
       "port": 8770
+    },
+    {
+      "name": "liara-replay",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--frozen", "python", "-m", "liara.dev_server"],
+      "port": 8771
     }
   ]
 }
