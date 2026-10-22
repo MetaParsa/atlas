@@ -166,8 +166,10 @@ def brands_in(text: str, known: set[str]) -> set[str]:
     return found
 
 
-def candidates(need: Need, limit_per_query: int = 60) -> tuple[list[Candidate], list[str]]:
-    """Ranked candidate products (sane price only, no redacted titles) and the categories used."""
+def candidates(need: Need, limit_per_query: int = 60, wide: bool = False) -> tuple[list[Candidate], list[str]]:
+    """Ranked candidate products (sane price only, no redacted titles) and the categories used.
+    `wide` (a model will judge every candidate): also search the model's own category hints. Text hits alone can
+    land in the wrong place («کفش دویدن» → women's college shoes) and the judge can't keep what was never fetched."""
     con = store.get()
     qs = queries_for(need)
     raw: list[dict] = []
@@ -181,9 +183,10 @@ def candidates(need: Need, limit_per_query: int = 60) -> tuple[list[Candidate], 
     inferred = infer_categories(raw, head_word(need))
     hinted = hint_categories(con, need.category_hints, accessories=acc)
     cats = [c for c in inferred if c in hinted] or inferred or hinted
+    fetch = list(dict.fromkeys(cats + hinted))[:4] if wide else cats   # `cats` stays the narrow, rule-picked set
     by_id: dict[str, tuple[int, dict]] = {}
     for q in qs:
-        for c in cats:
+        for c in fetch:
             for i, r in enumerate(store.search_products(con, q, limit=limit_per_query, category=c)):
                 if r["product_id"] not in by_id or i < by_id[r["product_id"]][0]:
                     by_id[r["product_id"]] = (i, r)

@@ -44,7 +44,8 @@ class Judgement:
 
 
 def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
-    """The candidates the model says match `want` (order kept) and the likely copies, or None (no usable judgement)."""
+    """The candidates the model says match `want` (order kept) and the likely copies, or None (no usable judgement).
+    An empty `kept` is a real answer when the model gave a verdict on (nearly) every candidate: none of them fits."""
     items = cands[:MAX_ITEMS]
     if not items or not want.strip():
         return None
@@ -56,7 +57,7 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
     except Exception:   # LLM off, budget spent, bad JSON: the rule-based result stands
         return None
     kept = [c for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True]
-    if not kept:        # «nothing fits» is more likely a bad answer than a true one; don't empty the results
+    if not kept and len(verdicts) < 0.8 * len(items):   # an empty answer that skipped items is a bad answer, not a «no»
         return None
     copies = {c.product_id for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True
               and verdicts[i].get("copy") is True}

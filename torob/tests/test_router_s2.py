@@ -100,3 +100,24 @@ def test_relevance_judge_keeps_what_the_model_names_and_falls_back_cleanly():
     assert "1 | کاور سیلیکونی هایلو | کیف و کاور | 300000" in seen[0][1]
     assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: {"items": [{"i": 0, "show": False}]})), "x", cands, "s") is None   # nothing → no judgement
     assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: "not json")), "x", cands, "s") is None      # bad answer → rules
+
+
+def test_a_full_no_from_the_judge_means_nothing_fits():
+    from types import SimpleNamespace as NS
+    from torob.agents import relevance
+    cands = [NS(product_id=f"p{i}", title=f"کفش کالج زنانه {i}", category="کفش کالج زنانه", price_median=1) for i in range(5)]
+    all_no = {"items": [{"i": i, "show": False} for i in range(5)]}
+    j = relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: all_no)), "کفش دویدن", cands, "s")
+    assert j is not None and j.kept == []                    # a verdict on every item: a real «none of these»
+
+
+@pytest.mark.skipif(not __import__("torob").store.DB_PATH.exists(), reason="run torob.etl.build_db first")
+def test_advisor_says_nothing_fits_instead_of_showing_rejects():
+    from torob.agents import advisor, relevance
+    from torob.models import Conditions, Need
+    res = advisor.pick_products(Need(product_type="کفش دویدن", keywords=["کفش دویدن"]), Conditions(radius_km=None),
+                                judge=lambda cands: relevance.Judgement([]))
+    assert res.picks == [] and "دقیقاً همین" in res.notes[0] and res.n_matching == 0
+    fallback = advisor.pick_products(Need(product_type="هندزفری بلوتوثی", keywords=["هندزفری بلوتوثی"]),
+                                     Conditions(radius_km=None), judge=lambda cands: None)
+    assert fallback.picks                                     # judge unavailable: the rule-picked categories still answer

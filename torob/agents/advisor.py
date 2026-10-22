@@ -199,7 +199,7 @@ def _brand_filter(need: Need, reps: list[search.Candidate], notes: list[str]) ->
 
 def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model."""
-    cands, cats = search.candidates(need)
+    cands, cats = search.candidates(need, wide=judge is not None)   # a judge sees a wider net (the model's categories too)
     notes: list[str] = []
     if not cands:
         return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم."], [], None, 0, False)
@@ -207,8 +207,15 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     reps, same_title = _dedupe(cands)
     reps = _brand_filter(need, reps, notes)
     n_found, n_matching, copies = len(reps), None, set()
-    if judge and (j := judge(reps)):   # only the products that are the thing asked for compete
-        reps, copies, n_matching = j.kept, j.copies, len(j.kept)
+    if judge:
+        j = judge(reps)
+        if j is None:     # no usable judgement: back to the narrow, rule-picked categories
+            reps = [c for c in reps if c.category in cats] or reps
+        elif not j.kept:  # the model looked at each one and none is the thing asked for: say so, don't show rejects
+            return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی که دقیقاً همین باشه پیدا نکردم؛ یه جور دیگه بگو یا عکسش رو بفرست."],
+                                 [], None, 0, False, n_candidates=n_found, n_matching=0)
+        else:             # only the products that are the thing asked for compete
+            reps, copies, n_matching = j.kept, j.copies, len(j.kept)
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
     budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)
