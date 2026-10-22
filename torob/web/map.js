@@ -182,7 +182,7 @@
       if (!r.ok) throw new Error(d.detail);
     } catch (e) { v.sub.textContent = (e && e.message) || "نقشه باز نشد؛ دوباره امتحان کن."; return; }
     if (!V.map) return;
-    const st = { open: false, credit: false, near: false, hubs: true };
+    const st = { open: false, credit: false, near: false, hubs: false };   // the bourse layer crowds the pins it sits on: one tap away
     const c = d.center;
     const draw = (refit) => {
       v.layer.clearLayers(); hidePanel();
