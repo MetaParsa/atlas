@@ -105,3 +105,10 @@ def test_map_endpoints_check_what_is_on_screen():
     assert c.get("/api/map/category", params={"c": "دسته‌ای که نیست"}).status_code == 404
     d = c.get("/api/map/category", params={"c": EARBUDS}).json()
     assert d["dots"] and d["buildings"] and "center" not in d
+
+
+@needs_db
+def test_after_a_bourse_question_the_judge_hears_the_item_not_the_place():
+    s = SessionState()
+    turn(s, text="بورس هندزفری کجاست؟")
+    assert [h["content"] for h in s.history if h["role"] == "user"] == ["هندزفری"]

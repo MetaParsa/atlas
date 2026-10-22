@@ -572,6 +572,10 @@ def show_hub(state: SessionState, em: Emitter, need: Need | None) -> Iterator[st
         yield say(state, em, "بورسِ چی رو می‌خوای؟ اسم کالا یا صنف رو بگو.")
         return
     state.need = need
+    # The relevance judge reads the shopper's last words as «what they want». «بورس گوشی کجاست؟» asks for a place, so
+    # a later «مدل‌ها تو علاالدین» would have every phone judged «not a bourse»: keep only the item in the history.
+    if state.history and state.history[-1]["role"] == "user":
+        state.history[-1] = {"role": "user", "content": need.product_type or " ".join(need.keywords[:2]) or state.history[-1]["content"]}
     yield em.emit("status", {"text": "دارم می‌گردم ببینم فروشنده‌هاش بیشتر کجا جمع‌ان…", "done": False})
     _, cats = search.candidates(need)
     if not cats:
