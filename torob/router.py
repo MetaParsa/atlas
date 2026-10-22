@@ -364,7 +364,8 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
                                         llm=em.llm, session_id=em.session_id, earlier=earlier, live_price=live_price)
     s = o.shop
     yield em.emit("call_start", {
-        "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']}",   # the page adds the «شبیه‌سازی» tag
+        "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']}",
+        "simulated": True,   # every call is; the page shows it as the «شبیه‌سازی» tag
         "reasons": "می‌پرسم چون: " + "، ".join(plan.reasons),
         "real_shop_note": "با این فروشگاه واقعاً تماس گرفته نشد." if s["name_is_real"] else None})
     yield em.emit("status", {"text": "در حال تماس…", "done": False})

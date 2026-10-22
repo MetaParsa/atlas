@@ -140,7 +140,7 @@ def test_full_flow_call_plan_alternative_recheck():
     kinds = [e for e, _ in ev]
     assert kinds.index("call_start") < kinds.index("call_line") < kinds.index("call_result") < kinds.index("card_update")
     assert "plan" in kinds and s.plan["shop_id"] == shops[0]["shop_id"]
-    assert dict(ev)["card_update"]["stock"] == "simulated_confirmed" and "شبیه‌سازی" in dict(ev)["call_start"]["title"]
+    assert dict(ev)["card_update"]["stock"] == "simulated_confirmed" and dict(ev)["call_start"]["simulated"] is True
     ev = turn(s, text="به دومی زنگ بزن")
     alt = dict(ev)["alternative"]
     assert alt["reason"].endswith("جواب نداد") and alt["shop"]["shop_id"] not in (shops[0]["shop_id"], shops[1]["shop_id"])
