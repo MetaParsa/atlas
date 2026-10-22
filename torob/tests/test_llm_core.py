@@ -89,3 +89,76 @@ def test_tool_loop_survives_bad_tool_args_and_stops():
     em = Emitter("s")
     list(tool_loop(c, [], [tool], em, max_steps=2))
     assert em.events[-1][0] == "message" and sum(e == "step" for e, _ in em.events) == 2
+
+
+# --- Claude through the official SDK (a stand-in client; no network) -------------------------------------------
+
+from types import SimpleNamespace as _NS
+
+
+class _FakeMessages:
+    def __init__(self, content, stop="end_turn"):
+        self.content, self.stop, self.calls = content, stop, []
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        return _NS(content=self.content, stop_reason=self.stop, usage=_NS(input_tokens=50, output_tokens=7))
+
+
+def _claude(content, stop="end_turn"):
+    from core.llm import AnthropicProvider, LLMClient
+    fake = _FakeMessages(content, stop)
+    p = AnthropicProvider("anthropic", "test-key", _client=_NS(messages=fake))
+    return LLMClient([p], {"router": "claude-haiku-5-5", "chat": "claude-haiku-5-5", "vision": "claude-haiku-5-5"},
+                     enabled=True), fake
+
+
+def test_claude_request_translates_photo_tools_and_history():
+    llm, fake = _claude([_NS(type="text", text="شارژر اپل")])
+    photo = "data:image/jpeg;base64,QUJD"
+    res = llm.complete("vision", [{"role": "system", "content": "sys"}, {"role": "assistant", "content": "قبلی"},
+                                  {"role": "user", "content": [{"type": "text", "text": "چیه؟"},
+                                                               {"type": "image_url", "image_url": {"url": photo}}]}])
+    kw = fake.calls[0]
+    assert res.text == "شارژر اپل" and res.provider == "anthropic" and kw["model"] == "claude-haiku-5-5"
+    assert kw["system"] == "sys" and kw["thinking"] == {"type": "disabled"} and kw["output_config"] == {"effort": "low"}
+    assert "temperature" not in kw
+    assert kw["messages"] == [{"role": "user", "content": [   # a leading assistant turn is dropped
+        {"type": "text", "text": "چیه؟"},
+        {"type": "image", "source": {"type": "base64", "data": "QUJD", "media_type": "image/jpeg"}}]}]
+
+
+def test_claude_tool_calls_round_trip_in_openai_shape():
+    llm, fake = _claude([_NS(type="text", text=""), _NS(type="tool_use", id="tu1", name="lookup", input={"q": "x"})])
+    tools = [{"type": "function", "function": {"name": "lookup", "description": "d",
+                                               "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}}]
+    res = llm.complete("chat", [{"role": "user", "content": "سلام"}], tools=tools)
+    assert res.tool_calls == [{"id": "tu1", "type": "function", "function": {"name": "lookup", "arguments": '{"q": "x"}'}}]
+    assert fake.calls[0]["tools"][0]["input_schema"]["properties"] == {"q": {"type": "string"}}
+    from core.llm import to_anthropic_messages
+    _, msgs = to_anthropic_messages([{"role": "user", "content": "سلام"},
+                                     {"role": "assistant", "content": None, "tool_calls": res.tool_calls},
+                                     {"role": "tool", "tool_call_id": "tu1", "content": '{"ok": 1}'}])
+    assert msgs[1]["content"] == [{"type": "tool_use", "id": "tu1", "name": "lookup", "input": {"q": "x"}}]
+    assert msgs[2] == {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu1", "content": '{"ok": 1}'}]}
+
+
+def test_claude_refusal_and_bad_json_fail_cleanly():
+    import pytest
+    from core.llm import LLMError
+    llm, _ = _claude([_NS(type="text", text="no")], stop="refusal")
+    with pytest.raises(LLMError):
+        llm.complete("router", [{"role": "user", "content": "x"}])
+    llm, fake = _claude([_NS(type="text", text="not json")])
+    with pytest.raises(LLMError):
+        llm.complete("router", [{"role": "user", "content": "x"}], json_mode=True)
+    assert "JSON object only" in fake.calls[0]["system"]
+
+
+def test_anthropic_key_means_claude_only_no_gateway(monkeypatch):
+    from core.llm import AnthropicProvider, from_env
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PRIMARY_BASE_URL", "https://gateway.example/v1")
+    monkeypatch.setenv("LLM_PRIMARY_API_KEY", "gw-key")
+    providers = from_env().providers
+    assert len(providers) == 1 and isinstance(providers[0], AnthropicProvider) and "test-key" not in repr(providers[0])

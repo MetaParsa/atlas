@@ -169,7 +169,7 @@ def test_default_llm_model_is_claude_haiku(monkeypatch):
     from core.llm import from_env
     for k in ("MODEL_ROUTER", "MODEL_CHAT", "MODEL_CALL"):
         monkeypatch.delenv(k, raising=False)
-    assert set(from_env().models.values()) == {"anthropic/claude-haiku-5.5"}
+    assert set(from_env().models.values()) == {"claude-haiku-5-5"}
 
 
 PHOTO = "data:image/jpeg;base64," + "A" * 400   # shape only; nothing decodes it without a model
