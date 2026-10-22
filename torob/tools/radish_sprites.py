@@ -19,6 +19,9 @@ from pathlib import Path
 
 W, H = 25, 27                   # canvas: the 19x19 radish plus room for bubbles, props and sparkles
 OX, OY = 3, 6                   # where the radish's own 19x19 grid sits on the canvas
+# Torob's radish looks to the left (its face sits left of centre). In this right-to-left app it sits on the left,
+# next to its own messages, so every frame is drawn as authored and then mirrored: it faces the chat, props and all.
+MIRROR = True
 WEB = Path(__file__).resolve().parents[1] / "web"
 
 PALETTE = {
@@ -366,7 +369,7 @@ def sheet_rows(frames, scale=1, bg=None):
         row = []
         for f in frames:
             for x in range(W * scale):
-                c = f.px[y // scale][x // scale]
+                c = f.px[y // scale][(W * scale - 1 - x) // scale if MIRROR else x // scale]
                 row.append(bg if (c == "." and bg) else rgba(c))
         rows.append(row)
     return rows
