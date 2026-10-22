@@ -16,12 +16,17 @@ from pydantic import BaseModel, Field
 
 from core.agent_loop import Emitter
 from core.llm import FakeLLM, LLMClient, from_env
-from torob import store
+from torob import boot, store
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
 from torob.router import conditions_event, rule_route, run_turn
 
 app = FastAPI(title="Torob in-store agent")
+
+
+@app.on_event("startup")
+def _boot() -> None:
+    boot.ensure_db_async()   # fallback only: builds torob.db on the disk if it's missing and DATASET_URL is set
 STREAM_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -97,7 +102,7 @@ def health() -> dict:
                 "llm_enabled": llm().enabled}
     except Exception as e:  # DB missing or still uploading: answer 200 so the host doesn't kill the container
         store.reset()
-        return {"status": "building", "detail": type(e).__name__}
+        return {"status": "building", "detail": type(e).__name__, "boot": boot.status}
 
 
 @app.get("/api/areas")
@@ -162,10 +167,10 @@ def admin() -> HTMLResponse:
                         ("سقف هر نشست", fmt(c.guard.session_tokens)),
                         ("آخرین فراخوانی‌ها", "، ".join(f"{x['role']}:{x['tokens']}" for x in c.log[-5:]) or "—")]),
         ("۲۴ ساعت اخیر", [("نشست", st["sessions"]), ("نوبت", st["turns"]),
-                          ("زمان پاسخ p50 / p95 (ms)", f"{fmt(st['p50_ms'])} / {fmt(st['p95_ms'])}"),
+                          ("زمان پاسخ سرور p50 / p95 (ms، بدون مکث نمایشی تماس)", f"{fmt(st['p50_ms'])} / {fmt(st['p95_ms'])}"),
                           ("تماس شبیه‌سازی‌شده", st["calls"]),
-                          *[(outcomes.get(k, k), v) for k, v in st["call_outcomes"].items()],
-                          ("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected)]),
+                          *[(outcomes.get(k, k), v) for k, v in st["call_outcomes"].items()]]),
+        ("از آخرین راه‌اندازی", [("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected)]),
     ]
     errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
                    for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"
@@ -219,6 +224,7 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                 yield chunk
                 if delay and chunk.startswith("event: call_line"):
                     time.sleep(delay)   # the call reads like a call; the facts are already decided
+                    em.paused += delay  # …and the pacing isn't counted as response time on /admin
         finally:
             adb.save(sid, state)   # also when the client disconnects mid-stream
             with _busy_lock:

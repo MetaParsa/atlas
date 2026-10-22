@@ -1,0 +1,15 @@
+{
+  "platform": "docker",
+  "app": "torob",
+  "port": 8000,
+  "disks": [
+    { "name": "data", "mountTo": "/data" }
+  ],
+  "healthCheck": {
+    "command": "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\"",
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3,
+    "startPeriod": 60
+  }
+}

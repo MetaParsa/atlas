@@ -23,6 +23,7 @@ from torob.agents import call as call_engine
 from torob.agents import followup
 from torob.agents import shops as shops_agent
 from torob.logic import hours as H
+from torob.logic.geo import haversine_m
 from torob.models import DEFAULT_AREA, DEFAULT_CENTER, Chip, Conditions, Location, Need, RouterOutput, SessionState
 
 ROUTER_PROMPT = (Path(__file__).parent / "prompts" / "router.md").read_text(encoding="utf-8")
@@ -132,7 +133,9 @@ def _parse_arrive_at(v) -> datetime | None:
     if m := _HHMM.match(v):
         h, mi = int(m.group(1)), int(m.group(2))
         if h < 24 and mi < 60:
-            return clock.now().replace(hour=h, minute=mi, second=0, microsecond=0)
+            now = clock.now()
+            dt = now.replace(hour=h, minute=mi, second=0, microsecond=0)
+            return dt if dt >= now - timedelta(minutes=1) else dt + timedelta(days=1)
         return None
     try:
         dt = H.as_tehran(datetime.fromisoformat(v))
@@ -151,6 +154,11 @@ def apply_patch(state: SessionState, patch: dict) -> list[str]:
         if k not in allowed:
             continue
         if k == "arrive_at":
+            if v is None:   # «الان راه می‌افتم»
+                if state.conditions.arrive_at is not None:
+                    state.conditions = state.conditions.model_copy(update={"arrive_at": None})
+                    changed.append(k)
+                continue
             v = _parse_arrive_at(v)
             if v is None:
                 continue
@@ -171,6 +179,7 @@ def conditions_event(state: SessionState) -> dict:
             "payment": c.payment, "fast_delivery": c.fast_delivery, "open": c.open,
             "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None,
             "arrive_label": _arrive_label(c.arrive_at),
+            "arrive_today": bool(c.arrive_at) and H.as_tehran(c.arrive_at).date() == clock.now().date(),
             "demo_time": clock.now().strftime("%H:%M") if clock.is_demo() else None}
 
 
@@ -472,7 +481,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
                                     "compare_rows": res.compare_rows, "notes": res.notes})
     if not cards:
         yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
-    elif not res.in_area and state.conditions.radius_km:
+    elif not res.in_area and state.conditions.radius_km is not None:
         yield from _coverage_offer(state, em)
     elif ask and res.question:
         state.remember("assistant", res.question["text"])
@@ -521,18 +530,23 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
         "relaxed": res.relaxed, "demo_time": now.strftime("%H:%M") if clock.is_demo() else None,
         "disclaimer": "نام و شماره‌ی فروشگاه‌ها در دیتاست ساختگی‌اند؛ تماس‌ها شبیه‌سازی است.",
     })
-    if c["found"] == 0:
+    if c["found"] == 0 and not cards:
         yield from _coverage_offer(state, em)
     elif not cards:
         yield say(state, em, res.notes[0] if res.notes else "نزدیکت فروشنده‌ای برای این مدل ثبت نشده.")
-    elif not state.conditions.arrive_at and c["closed_at_arrival"] >= 0.5 * max(1, c["found"] - c["terms_mismatch"]):
+    elif (not state.conditions.arrive_at and not state.declined_morning and not res.relaxed
+          and c["found"] - c["terms_mismatch"] >= 2
+          and c["closed_at_arrival"] > 0.5 * (c["found"] - c["terms_mismatch"])):
         yield from _closed_now_offer(state, em, now)
     if state.plan and state.plan.get("product_id") == state.selected_product_id:
         yield from _recheck_plan(state, em)
 
 
 def _next_shopping_morning(now: datetime) -> datetime:
-    """Tomorrow 10:00, skipping Friday (most shops in the data are closed on Fridays)."""
+    """Today 10:00 if it's still before 10 and not Friday; else the next non-Friday day at 10:00
+    (most shops in the data are closed on Fridays)."""
+    if now.hour < 10 and H.iran_weekday(now.date()) != 6:
+        return now.replace(hour=10, minute=0, second=0, microsecond=0)
     day = now + timedelta(days=1)
     while H.iran_weekday(day.date()) == 6:
         day += timedelta(days=1)
@@ -542,25 +556,51 @@ def _next_shopping_morning(now: datetime) -> datetime:
 def _closed_now_offer(state: SessionState, em: Emitter, now: datetime) -> Iterator[str]:
     """R1: most shops are closed when you'd get there → offer the next shopping morning instead of a dead end."""
     morning = _next_shopping_morning(now)
-    day = "فردا" if (morning.date() - now.date()).days == 1 else shops_agent.WEEKDAYS[H.iran_weekday(morning.date())]
+    gap = (morning.date() - now.date()).days
+    day = "امروز" if gap == 0 else "فردا" if gap == 1 else shops_agent.WEEKDAYS[H.iran_weekday(morning.date())]
     why = "جمعه‌ست و " if H.iran_weekday(now.date()) == 6 else ""
     text = f"{why}الان بیشتر مغازه‌ها تا برسی بسته‌ان — برای {day} ۱۰ صبح نشون بدم؟"
-    chips = [Chip(label=f"{day} ۱۰ صبح", kind="direct_call", tool="set_conditions",
-                  args={"arrive_at": morning.isoformat()}).model_dump(),
-             Chip(label="نه، همین الان", kind="direct_call", tool="noop").model_dump()]
+    args = {"arrive_at": morning.isoformat(timespec="minutes")}
+    if state.conditions.open == "now":   # «باز الان» would still test the current time
+        args["open"] = "at_arrival"
+    chips = [Chip(label=f"{day} ۱۰ صبح", kind="direct_call", tool="set_conditions", args=args).model_dump(),
+             Chip(label="نه، همین الان", kind="direct_call", tool="decline_morning").model_dump()]
     state.remember("assistant", text)
     yield em.emit("question", {"text": text, "chips": chips})
 
 
 def _coverage_offer(state: SessionState, em: Emitter) -> Iterator[str]:
-    """R1/Scene 10: the dataset covers ~10% of Torob's Tehran shops, mostly around Jomhouri/Ferdowsi; say so."""
-    text = "داده‌ی ترب این‌جا فروشگاه زیادی نداره (بیشترش اطراف جمهوری و فردوسیه). کجا رو نشون بدم؟"
+    """R1/Scene 10: the dataset covers ~10% of Torob's Tehran shops, mostly in the central area (Ferdowsi, Sheikh Hadi,
+    Baharestan). Offer only chips that change something: the dense area if we're far from it, a bigger radius."""
+    c = state.conditions
     lat, lng = DEFAULT_CENTER
-    chips = [Chip(label="جمهوری / فردوسی", kind="direct_call", tool="set_location",
-                  args={"lat": lat, "lng": lng, "label": DEFAULT_AREA, "source": "area"}).model_dump(),
-             Chip(label="کل تهران", kind="direct_call", tool="set_conditions", args={"radius_km": None}).model_dump()]
+    far = haversine_m(c.center.lat, c.center.lng, lat, lng) > 3_000
+    chips = []
+    if far:
+        chips.append(Chip(label="جمهوری / فردوسی", kind="direct_call", tool="set_location",
+                          args={"lat": lat, "lng": lng, "label": DEFAULT_AREA, "source": "area"}).model_dump())
+    if c.radius_km is not None:
+        if c.radius_km < 3:
+            chips.append(Chip(label="تا ۳ کیلومتر", kind="direct_call", tool="set_conditions",
+                              args={"radius_km": 3}).model_dump())
+        chips.append(Chip(label="کل تهران", kind="direct_call", tool="set_conditions",
+                          args={"radius_km": None}).model_dump())
+    if not chips:
+        return
+    text = ("داده‌ی ترب این‌جا فروشگاه زیادی نداره (بیشترش منطقه‌ی مرکزی، اطراف جمهوری و فردوسیه). کجا رو نشون بدم؟"
+            if far else "توی این شعاع فروشنده‌ای ثبت نشده. شعاع رو بیشتر کنم؟")
     state.remember("assistant", text)
     yield em.emit("question", {"text": text, "chips": chips})
+
+
+class NoMorningArgs(DirectTool):
+    pass
+
+
+@direct("decline_morning", NoMorningArgs)
+def _chip_decline_morning(state: SessionState, em: Emitter, args: NoMorningArgs) -> Iterator[str]:
+    state.declined_morning = True   # don't ask again on every refresh
+    yield say(state, em, "باشه، همین الان رو نشون می‌دم.")
 
 
 def _recheck_plan(state: SessionState, em: Emitter) -> Iterator[str]:

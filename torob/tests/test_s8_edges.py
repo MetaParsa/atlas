@@ -103,3 +103,97 @@ def test_admin_page_shows_numbers_and_no_secrets(tmp_path, monkeypatch):
     assert "api_key" not in r.text.lower() and "Bearer" not in r.text
     st = adb.stats()
     assert st["turns"] >= 1 and st["p50_ms"] is not None
+
+
+# --- S8 review fixes ---------------------------------------------------------------------------------------------
+
+def test_morning_before_ten_is_today_and_label_says_so():
+    assert _next_shopping_morning(datetime(2026, 10, 24, 0, 30, tzinfo=TEHRAN)) == datetime(2026, 10, 24, 10, 0, tzinfo=TEHRAN)
+    assert _next_shopping_morning(datetime(2026, 10, 23, 8, 0, tzinfo=TEHRAN)).date() == datetime(2026, 10, 24).date()  # Fri 8:00 → Sat
+    clock.set_now(datetime(2026, 10, 24, 0, 30))
+    q = [d for e, d in to_shops(SessionState()) if e == "question"]
+    assert q and "امروز ۱۰ صبح" in q[-1]["text"]
+
+
+def test_no_morning_offer_when_shops_are_open_or_arrival_set():
+    clock.set_now(datetime(2026, 10, 22, 18, 5))
+    assert not [d for e, d in to_shops(SessionState()) if e == "question" and "۱۰ صبح" in d["text"]]
+    clock.set_now(datetime(2026, 10, 22, 22, 30))
+    s = SessionState()
+    apply_patch(s, {"arrive_at": "2026-10-24T11:00:00+03:30"})
+    assert not [d for e, d in to_shops(s) if e == "question" and "۱۰ صبح" in d["text"]]
+
+
+def test_decline_morning_stops_asking():
+    clock.set_now(datetime(2026, 10, 22, 22, 30))
+    s = SessionState()
+    q = [d for e, d in to_shops(s) if e == "question"][-1]
+    no = Chip(**q["chips"][1])
+    assert no.tool == "decline_morning"
+    turn(s, chip=no)
+    assert s.declined_morning and s.conditions.arrive_at is None
+    assert not [d for e, d in to_shops(s) if e == "question" and "۱۰ صبح" in d["text"]]
+
+
+def test_morning_chip_switches_open_now_to_at_arrival():
+    clock.set_now(datetime(2026, 10, 22, 22, 30))
+    s = SessionState()
+    apply_patch(s, {"open": "now"})
+    q = [d for e, d in to_shops(s) if e == "question"][-1]
+    assert q["chips"][0]["args"]["open"] == "at_arrival"
+
+
+def test_coverage_offer_quiet_in_dense_centre():
+    from torob.router import DEFAULT_CENTER, _coverage_offer
+    lat, lng = DEFAULT_CENTER
+    s = SessionState()
+    turn(s, chip=Chip(label="x", kind="direct_call", tool="set_location", args={"lat": lat, "lng": lng, "label": "مرکز"}))
+    apply_patch(s, {"radius_km": None})
+    em = Emitter("s")
+    assert list(_coverage_offer(s, em)) == []          # whole city at the centre: nothing to offer
+    apply_patch(s, {"radius_km": 0.5})
+    list(_coverage_offer(s, em))
+    q = dict(em.events)["question"]
+    assert all(c["tool"] == "set_conditions" for c in q["chips"])   # no «go to the centre» chip when already there
+
+
+def test_hhmm_rolls_to_tomorrow_when_past():
+    clock.set_now(datetime(2026, 10, 22, 18, 5))
+    assert _parse_arrive_at("20:30").date() == datetime(2026, 10, 22).date()
+    assert _parse_arrive_at("10:00").date() == datetime(2026, 10, 23).date()
+    s = SessionState()
+    apply_patch(s, {"arrive_at": "20:30"})
+    assert apply_patch(s, {"arrive_at": None}) == ["arrive_at"] and s.conditions.arrive_at is None
+
+
+def test_admin_escapes_and_handles_empty_db(tmp_path, monkeypatch):
+    from torob import app as app_mod
+    from torob.appdb import AppDB
+    adb = AppDB(tmp_path / "app.db")
+    monkeypatch.setattr(app_mod, "appdb", lambda: adb)
+    c = TestClient(app_mod.app)
+    r = c.get("/admin")
+    assert r.status_code == 200 and "خطایی ثبت نشده" in r.text
+    adb.log_event("s1", "error", {"text": "<script>alert(1)</script>", "detail": "<b>x</b>"})
+    r = c.get("/admin")
+    assert "<script>alert" not in r.text and "&lt;script&gt;" in r.text
+
+
+def test_latency_excludes_pacing():
+    em = Emitter("s")
+    em.started -= 5.0      # 5 s have passed…
+    em.paused = 5.0        # …all of it deliberate call-line pacing
+    em.emit("done", {})
+    assert em.events[-1][1]["ms"] < 1000
+
+
+def test_health_reports_boot_status_while_db_missing(tmp_path, monkeypatch):
+    from torob import app as app_mod, boot
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "missing.db")
+    store.reset()
+    try:
+        r = TestClient(app_mod.app).get("/health").json()
+        assert r["status"] == "building" and r["boot"] == boot.status
+    finally:
+        monkeypatch.undo()
+        store.reset()

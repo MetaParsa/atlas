@@ -29,7 +29,9 @@ class AppDB:
         self._con = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self._lock = threading.Lock()
         with self._lock:
-            self._con.execute("PRAGMA journal_mode=WAL")
+            # Rollback journal, not WAL: WAL fails on mounted/network disks («disk I/O error» on a Docker volume);
+            # writes are already serialised by the lock in this single process.
+            self._con.execute("PRAGMA journal_mode=DELETE")
             self._con.executescript(SCHEMA)
         self.purge()
 
@@ -73,7 +75,7 @@ class AppDB:
             calls = [json.loads(d)["result"] for (d,) in q(
                 "SELECT data FROM events WHERE ts >= ? AND event = 'call_result'", since)]
             errors = [(ts, json.loads(d)) for ts, d in q(
-                "SELECT ts, data FROM events WHERE event = 'error' ORDER BY id DESC LIMIT 10")]
+                "SELECT ts, data FROM events WHERE event = 'error' AND ts >= ? ORDER BY id DESC LIMIT 10", since)]
         pct = lambda p: done_ms[min(len(done_ms) - 1, int(p * len(done_ms)))] if done_ms else None
         outcomes: dict[str, int] = {}
         for c in calls:

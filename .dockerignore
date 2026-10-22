@@ -1,0 +1,10 @@
+.venv
+.git
+.pytest_cache
+**/__pycache__
+data
+*.db
+*.db-wal
+*.db-shm
+torob/tests
+.claude

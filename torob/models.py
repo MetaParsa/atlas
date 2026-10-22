@@ -77,6 +77,7 @@ class SessionState(BaseModel):
     call_ok_ids: list[str] = []          # shops shown as having it — the only ones call_shop accepts
     shops_shown: list[dict] = []         # compact facts of the shown shops (ask_results answers from these)
     tried_shop_ids: list[str] = []       # called and failed (no answer / unavailable): alternatives skip them
+    declined_morning: bool = False       # «نه، همین الان» to the next-morning offer: don't ask again
     last_block_kind: Literal["none", "products", "shops"] = "none"
     calls: dict[str, dict] = {}          # call_id -> CallResult (S6)
     plan: dict | None = None             # «برنامه‌ی خرید» card (S6)

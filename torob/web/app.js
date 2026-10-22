@@ -337,8 +337,9 @@ const SHEETS = {
         onchange: (e) => { sheet.close(); refine({ fast_delivery: e.target.checked }); } }), "فقط ارسال فوری"))),
   open: () => openSheet("باز بودن", () => opts(OPENS, cond ? cond.open : "at_arrival", (v) => refine({ open: v }))),
   arrive: () => openSheet("کی می‌رسی؟", () => {
-    const t = el("input", { type: "time", value: cond?.arrive_at || "" });
-    return el("div", {}, t,
+    // Pre-fill only a same-day arrival; a «شنبه ۱۰:۰۰» plan is shown as text so re-confirming can't lose its date.
+    const t = el("input", { type: "time", value: cond?.arrive_today ? cond.arrive_at : "" });
+    return el("div", {}, cond?.arrive_label ? el("div", { class: "meta", text: "الان: " + cond.arrive_label }) : null, t,
       el("button", { type: "button", class: "primary", text: "همین ساعت", onclick: () => { if (t.value) { sheet.close(); refine({ arrive_at: t.value }); } } }),
       el("button", { type: "button", class: "opt wide", text: "الان راه می‌افتم",
         onclick: () => { sheet.close(); refine({ arrive_at: null }); } }));
