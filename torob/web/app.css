@@ -336,7 +336,7 @@ table.compare td:first-child { color: var(--muted); }
   .field { background: transparent; box-shadow: none; }
   .field:focus-within { box-shadow: none; }
   .dock { inset-inline-end: 22px; bottom: calc(100% - 4px); }
-  .foot { grid-area: foot; background: transparent; padding: 6px 0 14px; }
+  .foot { grid-area: foot; position: relative; z-index: 6; background: transparent; padding: 6px 0 14px; }  /* above the strip that hides the chat under the input bar */
   /* start screen with no plan yet: one centred column, no sidebar */
   body:has(#start):has(#plan-slot:empty) #app { grid-template-columns: 1fr minmax(0, var(--col)) 1fr;
                                                 grid-template-areas: "top top top" ". main ." ". comp ." ". foot ."; }
