@@ -43,6 +43,8 @@ const ICONS = {
   list: ["M8 6h13M8 12h13M8 18h13", "M3.5 6h.01M3.5 12h.01M3.5 18h.01"],
   image: ["M3 5h18v14H3z", "c9,10,2", "M21 16l-5-5-9 8"],
   refresh: ["M21 12a9 9 0 1 1-3-6.7L21 8", "M21 3v5h-5"],
+  spark: ["M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z", "M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"],
+  checkc: ["c12,12,9", "M8 12.5l2.7 2.7L16 9.5"],
 };
 function icon(name, cls) {
   const NS = "http://www.w3.org/2000/svg";
@@ -311,6 +313,15 @@ const handlers = {
     Radish.set("happy");
   },
   card_update(d) { updateShopCard(d); },
+  ui(d) {   // generative UI: blocks the model chose for this answer, every value filled in by the server
+    if (d.mode === "intro") $("#blk-products .compare-wrap")?.remove();   // the AI's comparison replaces the generic one
+    const box = el("section", { class: "gen" });
+    if (d.text) box.append(agentRow(el("div", { class: "bubble agent", text: d.text })));
+    for (const b of d.blocks || []) { const n = genBlock(b); if (n) box.append(n); }
+    stream.append(box);
+    Radish.set(d.blocks?.length ? "happy" : "text");
+    scrollEnd();
+  },
   plan(d) { renderPlan(d, replaying); Radish.set("map"); },
   user(d) { stream.append(userBubble(d.text, d.image)); },   // only in a replayed history
   alternative(d) {
@@ -334,6 +345,47 @@ function putBlock(id, node) {
   if (old) old.removeAttribute("id");
   stream.append(node);                        // newest block at the bottom; the old one stays as history
   turn.block = node;
+}
+
+// --- generative UI: the model picks the blocks, the server fills every value from the cards on screen -----------------
+const genTag = () => el("span", { class: "gen-tag" }, icon("spark"), el("span", { text: "چیده‌شده برای سؤالت" }));
+function genCard(cls, title, ...kids) {
+  return el("div", { class: `card gcard ${cls}` }, el("div", { class: "gen-h" }, el("span", { class: "gen-title", text: title }), genTag()), ...kids);
+}
+function genBlock(b) {
+  if (b.type === "compare") {
+    const best = b.cols.findIndex((c) => c.best);
+    const cell = (tag, i, ...kids) => el(tag, { class: i === best ? "best" : null }, ...kids);
+    const t = el("table", { class: "gtable" },
+      el("thead", {}, el("tr", {}, el("th", { class: "rowh" }),
+        b.cols.map((c, i) => cell("th", i, el("div", { class: "ct", text: shortTitle(c.title), title: c.title }),
+          i === best ? el("span", { class: "best-tag" }, icon("check"), "بهترین برای تو") : el("div", { class: "cs", text: c.sub || "" }))))),
+      el("tbody", {}, b.rows.map((r) => el("tr", {}, el("th", { class: "rowh", scope: "row", text: r.label }),
+        r.values.map((v, i) => cell("td", i, el("bdi", { text: v })))))));
+    return genCard("gcompare", b.of === "products" ? "مقایسه‌ی مدل‌ها" : "مقایسه‌ی فروشنده‌ها", el("div", { class: "gscroll" }, t));
+  }
+  if (b.type === "bars") {
+    const max = Math.max(...b.items.map((i) => i.value)) || 1;
+    return genCard("gbars", b.label, el("div", { class: "bars" }, b.items.map((i) => el("div", { class: "brow" + (i.best ? " best" : "") },
+      el("span", { class: "bname", text: shortTitle(i.name), title: i.name }),
+      el("span", { class: "btrack" }, el("span", { class: "bfill", style: `inline-size:${Math.max(4, (i.value / max) * 100)}%` })),
+      el("bdi", { class: "bval", text: i.text })))));
+  }
+  if (b.type === "pick") {
+    return el("div", { class: "card gcard gpick" },
+      el("div", { class: "gen-h" }, el("span", { class: "gen-title", text: b.kind === "shop" ? "پیشنهاد من برای خرید" : "پیشنهاد من" }), genTag()),
+      el("div", { class: "pick-t", text: shortTitle(b.title) }),
+      b.sub ? el("div", { class: "meta" }, el("bdi", { text: b.sub })) : null,
+      b.reason ? el("div", { class: "pick-r", text: b.reason }) : null,
+      b.chip ? chipButton(b.chip, "btn " + (b.kind === "shop" ? "red" : "blue"), null, b.kind === "shop" ? "phone" : "store") : null);
+  }
+  if (b.type === "checklist") {
+    return genCard("gcheck", b.title, el("ul", { class: "checks" }, b.items.map((t) => el("li", {}, icon("checkc"), el("span", { text: t })))));
+  }
+  if (b.type === "actions") {
+    return el("div", { class: "chips gen-actions" }, b.chips.map((c) => chipButton(c)));
+  }
+  return null;
 }
 
 // --- products (step 1) -----------------------------------------------------------------------------------------------

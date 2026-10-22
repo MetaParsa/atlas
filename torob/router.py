@@ -13,13 +13,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from core.agent_loop import Emitter, Tool, tool_loop
+from core.agent_loop import Emitter
 from core.llm import LLMClient
 from core.text import format_million, format_price_short, format_toman, normalize_fa, to_fa_digits, to_latin_digits
 from torob import store
 from torob import clock
 from torob.agents import advisor
 from torob.agents import call as call_engine
+from torob.agents import compose as composer
 from torob.agents import followup
 from torob.agents import relevance
 from torob import live as live_torob
@@ -480,7 +481,7 @@ def ask_with_options(state: SessionState, em: Emitter, q) -> str:
     return em.emit("question", {"text": q.text, "chips": [c.model_dump() for c in chips]})
 
 
-def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterator[str]:
+def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: bool = False) -> Iterator[str]:
     """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
     yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
     yield em.emit("status", {"text": "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
@@ -488,6 +489,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
     if res.named:
         card = res.named.card()
         state.product_ids, state.last_block_kind = [card["product_id"]], "products"
+        state.products_shown = [composer.product_fact(card, advisor.spec_pairs(res.named.c.specs))]
         _select_product(state, card["product_id"])
         n = res.named.area.sellers
         found = f"{to_fa_digits(n)} فروشنده {res.named.where}" if n else "نزدیکت فروشنده‌ای ثبت نشده"
@@ -499,6 +501,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
     cards = [p.card() for p in res.picks]
     _select_product(state, None)   # a new set of products: no shop or plan from the previous one is callable
     state.product_ids = [c["product_id"] for c in cards]
+    state.products_shown = [composer.product_fact(c, advisor.spec_pairs(p.c.specs)) for c, p in zip(cards, res.picks)]
     state.last_block_kind = "products"
     matching = f" → {to_fa_digits(res.n_matching)} تا همونیه که خواستی" if res.n_matching is not None else ""
     status = (f"{to_fa_digits(res.n_candidates)} مدل پیدا شد{matching} → {to_fa_digits(res.n_nearby)} تا نزدیکت فروشنده دارن"
@@ -506,6 +509,9 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
     yield em.emit("status", {"text": status, "done": True})
     yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(c) for c in cards],
                                     "compare_rows": res.compare_rows, "notes": res.notes})
+    if intro and len(cards) >= 2:   # generative UI: a comparison built for this shopper's own words
+        said = " / ".join(h["content"] for h in state.history if h["role"] == "user")[-300:]
+        yield from compose_ui(state, em, said, intro=True)
     if not cards:
         yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
     elif not res.in_area and state.conditions.radius_km is not None:
@@ -535,7 +541,8 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
         "closes": o.closes.strftime("%H:%M") if o.closes else None,
         "closes_iso": o.closes.isoformat() if o.closes else None,   # compare as datetimes: 00:00 = midnight
         "credit": [p for p, _ in o.payments],
-        "where": shops_agent.where_line(o.shop)} for i, o in enumerate(res.items)]
+        "where": shops_agent.where_line(o.shop), "lat": o.shop["lat"], "lon": o.shop["lon"]}
+        for i, o in enumerate(res.items)]
     state.last_block_kind = "shops"
     c = res.counts
     where = "نزدیکت" if state.conditions.radius_km else "در تهران"
@@ -706,7 +713,7 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         if q and q.wait:   # too vague: one question with answer buttons, models after the answer
             yield ask_with_options(state, em, q)
             return
-        yield from show_products(state, em, ask=not q)   # the model's own question replaces the advisor's
+        yield from show_products(state, em, ask=not q, intro=True)   # the model's own question replaces the advisor's
         if q:
             yield ask_with_options(state, em, q)
     elif out.intent == "refine":
@@ -724,7 +731,7 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         else:   # the user asked («بپرس») — that is the permission rule 5 needs
             yield from call_shop(state, em, shop["shop_id"], hold="نگه" in normalize_fa(text))
     elif out.intent == "ask_results":
-        if state.shops_shown:
+        if state.shops_shown or (state.products_shown and state.last_block_kind == "products"):
             yield from answer_results(state, em, text)
         else:   # «ارزون‌ترین پاوربانک» with nothing shown is a search, not a question about results
             redo = rule_route(text, allow_ask=False)
@@ -770,23 +777,58 @@ def _which_shop(state: SessionState, em: Emitter) -> Iterator[str]:
     yield em.emit("question", {"text": "به کدومشون زنگ بزنم؟", "chips": chips})
 
 
+def _ui_chip(kind: str, x: dict, product_id: str | None) -> dict | None:
+    """Buttons inside composed blocks: the same validated direct calls the cards use."""
+    if kind == "show_shops":
+        return Chip(label=f"فروشنده‌های «{x['title'][:40]}»", kind="direct_call", tool="show_shops",
+                    args={"product_id": x["product_id"]}).model_dump()
+    if kind == "call_shop":
+        return Chip(label=f"از «{x['name'][:40]}» بپرس", kind="direct_call", tool="call_shop",
+                    args={"shop_id": x["shop_id"], "product_id": product_id}).model_dump() if product_id else None
+    return Chip(label=x["text"], kind="say", value=x["text"]).model_dump()
+
+
+def _board(state: SessionState) -> composer.Board:
+    """The cards on screen for compose: the shop list once there is one (with the product it is for), else products."""
+    on_shops = state.last_block_kind == "shops" and bool(state.shops_shown)
+    products = ([p for p in state.products_shown if p["product_id"] == state.selected_product_id] if on_shops
+                else state.products_shown)
+    shops = state.shops_shown if on_shops else []
+    live, lv = {}, live_torob.CURRENT
+    if lv and shops and state.selected_product_id:   # cache only: what the shop cards already showed
+        for s in shops:
+            if "lat" in s and (p := lv.cached_shop_price(state.selected_product_id, s)):
+                live[s["shop_id"]] = p
+    calls = {k: c for k, c in state.calls.items() if c.get("product_id") == state.selected_product_id}
+    return composer.Board(products, shops, calls, live)
+
+
+def compose_ui(state: SessionState, em: Emitter, question: str, intro: bool = False):
+    """Generative UI: the model picks the blocks (compare, bars, pick, checklist, next steps); the code fills them.
+    Emits nothing and returns False when the model is off or its answer is unusable."""
+    if em.llm is None or not getattr(em.llm, "enabled", False):
+        return False
+    ui = composer.compose(em.llm, _board(state), question, em.session_id, intro=intro,
+                          selected_product_id=state.selected_product_id, chip_factory=_ui_chip)
+    if ui is None:
+        return False
+    state.remember("assistant", ui["text"] or "(جدول مقایسه)")
+    yield em.emit("ui", {"mode": "intro" if intro else "answer", **ui})
+    return True
+
+
 def answer_results(state: SessionState, em: Emitter, text: str) -> Iterator[str]:
-    """Questions about the shown shops. Numbers come only from their facts; with an LLM, a short tool loop over the
-    same facts; without one, rules for the common questions."""
+    """Questions about the cards on screen (shops, or products before any shop list). With a model, the answer is
+    composed as UI blocks whose numbers come only from the cards' facts; without one, rules for the common questions."""
     shown = state.shops_shown
-    if not shown:
-        yield say(state, em, "هنوز فروشگاهی نشون ندادم؛ اول بگو چی لازم داری.")
+    if not shown and not state.products_shown:
+        yield say(state, em, "هنوز چیزی نشون ندادم؛ اول بگو چی لازم داری.")
         return
-    if em.llm is not None and getattr(em.llm, "enabled", False):
-        tool = Tool("shown_shops", "facts about the shops currently shown to the user", {"type": "object", "properties": {}},
-                    lambda: {"shops": shown})
-        msgs = [{"role": "system", "content": "به فارسی محاوره‌ای و کوتاه جواب بده (حداکثر ۴ خط کوتاه، متن ساده بدون Markdown: "
-                                              "بدون ** یا # یا جدول). فقط از خروجی ابزار shown_shops عدد و "
-                                              "ساعت نقل کن؛ چیزی که نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودی تأییدشده ندان."},
-                {"role": "user", "content": text}]
-        for chunk in tool_loop(em.llm, msgs, [tool], em, max_steps=3, max_tokens=700):   # Persian is token-heavy
-            yield chunk
-        state.remember("assistant", em.events[-1][1].get("text", ""))
+    if (yield from compose_ui(state, em, text)):
+        return
+    if not shown:
+        best = state.products_shown[0]
+        yield say(state, em, f"پیشنهاد اولم «{best['title']}»ه ({best['label']}). برای دیدن فروشنده‌هاش دکمه‌ی زیر کارتش رو بزن.")
         return
     yield say(state, em, rule_answer(shown, text))
 
