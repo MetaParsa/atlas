@@ -194,7 +194,8 @@ def _brand_filter(need: Need, reps: list[search.Candidate], notes: list[str]) ->
     return branded if branded and (need.brand_pref or len(branded) >= 2) else reps
 
 
-def pick_products(need: Need, cond: Conditions) -> AdvisorResult:
+def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
+    """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model."""
     cands, cats = search.candidates(need)
     notes: list[str] = []
     if not cands:
@@ -202,6 +203,8 @@ def pick_products(need: Need, cond: Conditions) -> AdvisorResult:
 
     reps, same_title = _dedupe(cands)
     reps = _brand_filter(need, reps, notes)
+    if judge and (kept := judge(reps)):   # only the products that are the thing asked for compete
+        reps = kept
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
     budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)

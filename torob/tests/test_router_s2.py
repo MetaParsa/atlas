@@ -82,3 +82,18 @@ def test_asking_for_an_accessory_still_finds_accessories():
     from torob.models import Conditions, Need
     res = advisor.pick_products(Need(product_type="کاور ایرپاد", keywords=["کاور ایرپاد"]), Conditions(radius_km=None))
     assert res.picks and all("کاور" in p.c.category for p in res.picks)
+
+
+def test_relevance_judge_keeps_what_the_model_names_and_falls_back_cleanly():
+    from types import SimpleNamespace as NS
+    from torob.agents import relevance
+    cands = [NS(title="هندزفری بلوتوثی انکر", category="هدفون"), NS(title="کاور سیلیکونی هایلو", category="کیف و کاور"),
+             NS(title="هندزفری کیو سی وای", category="هدفون")]
+    seen = []
+    def script(role, msgs):
+        seen.append((role, msgs[0]["content"]))
+        return {"keep": [0, 2, 99]}
+    judged = relevance.keep(LLMClient([], {}, fake=FakeLLM(script)), "هندزفری برای باشگاه", cands, "s")
+    assert judged == [cands[0], cands[2]] and seen[0][0] == "judge" and "1 | کاور سیلیکونی هایلو | کیف و کاور" in seen[0][1]
+    assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: {"keep": []})), "x", cands, "s") is None    # nothing → no judgement
+    assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: "not json")), "x", cands, "s") is None      # bad answer → rules

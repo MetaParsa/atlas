@@ -21,6 +21,7 @@ from torob import clock
 from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import followup
+from torob.agents import relevance
 from torob.agents import shops as shops_agent
 from torob.logic import hours as H
 from torob.logic.geo import haversine_m
@@ -454,11 +455,20 @@ def _card_with_button(card: dict) -> dict:
     return {**card, "button": btn.model_dump()}
 
 
+def _relevance_judge(state: SessionState, em: Emitter):
+    """With a model: it checks which found products are the thing asked for, in the shopper's own words."""
+    if em.llm is None or not getattr(em.llm, "enabled", False):
+        return None
+    said = [h["content"] for h in state.history if h.get("role") == "user"][-2:]
+    want = " / ".join(said) or (state.need.named_product or state.need.product_type if state.need else "")
+    return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
+
+
 def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterator[str]:
     """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
     yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
     yield em.emit("status", {"text": "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
-    res = advisor.pick_products(state.need, state.conditions)
+    res = advisor.pick_products(state.need, state.conditions, judge=_relevance_judge(state, em))
     if res.named:
         card = res.named.card()
         state.product_ids, state.last_block_kind = [card["product_id"]], "products"
