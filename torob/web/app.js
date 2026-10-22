@@ -455,6 +455,10 @@ function genBlock(b) {
 // --- products (step 1) -----------------------------------------------------------------------------------------------
 
 function money(n) { return fa(Number(n).toLocaleString("en")).replace(/,/g, "٬"); }
+function shortMoney(n) {   // «۳٫۴۳ میلیون»: for the small lines where a full price would wrap
+  const t = (x) => fa(String(Number(x.toFixed(2)))).replace(".", "٫");
+  return n >= 1e9 ? `${t(n / 1e9)} میلیارد` : n >= 1e6 ? `${t(n / 1e6)} میلیون` : n >= 1e3 ? `${t(n / 1e3)} هزار` : money(n);
+}
 function priceRange(min, max) {
   if (!min) return "قیمت ثبت نشده";
   return min === max ? money(min) : `${money(min)} تا ${money(max)}`;
@@ -488,17 +492,13 @@ function productBlock(d) {
     const sellers = p.price_scope === "area" ? p.sellers_in_area : p.sellers_total;
     row.append(el("article", { class: "card pcard" }, productImage(p),
       el("div", { class: "pbody" },
-        el("div", { class: "title", text: p.title }),
+        el("div", { class: "title", text: p.title, title: p.title }),
         p.price_min ? el("div", { class: "price-big" }, el("small", { text: "از " }), el("bdi", { text: money(p.price_min) }), el("small", { text: " تومان" }))
                     : el("div", { class: "price-big" }, el("small", { text: "قیمت ثبت نشده" })),
-        el("div", { class: "meta" }, p.price_max && p.price_max !== p.price_min ? el("bdi", { text: `تا ${money(p.price_max)}، ` }) : null,
-          `قیمت ثبت‌شده ${scope}`),
+        el("div", { class: "meta", title: p.why }, "ثبت‌شده" + (sellers ? ` · ${fa(sellers)} فروشنده ${scope}` : ` ${scope}`)),
         liveLine,
-        sellers ? el("div", {}, el("span", { class: "pill blue" }, icon("store"), `${fa(sellers)} فروشنده ${scope}`)) : null,
         p.over_budget_pct ? el("div", { class: "over", text: `${fa(p.over_budget_pct)}٪ بالاتر از بودجه` }) : null,
-        p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی از عنوان و قیمت)" }) : null,
-        p.spec_lines?.length ? el("ul", { class: "specs" }, p.spec_lines.map((s) => el("li", { text: s, title: s }))) : null,
-        el("div", { class: "why", text: "چرا: " + p.why }),
+        p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی)" }) : null,
         p.button ? chipButton(p.button, "btn blue", `فروشنده‌های «${shortTitle(p.title)}»`, "store") : null)));
   }
   block.append(row);
@@ -520,8 +520,7 @@ async function liveProducts(lines) {
     try {
       const r = await (await fetch(`/api/live/product/${encodeURIComponent(id)}`)).json();
       if (r.status !== "ok") continue;
-      line.replaceChildren(liveDot(), el("span", { text: `قیمت امروز در ترب: از ${money(r.price_min)} تومان`
-        + (r.sellers ? ` · ${fa(r.sellers)} فروشگاه` : "") }));
+      line.replaceChildren(liveDot(), el("span", { text: `ترب امروز: ${shortMoney(r.price_min)}` }));
       line.hidden = false;
     } catch (_) {}
   }
@@ -548,17 +547,6 @@ async function liveShops(productId, ids, block) {
 
 // --- shops (steps 2–3) --------------------------------------------------------------------------------------------
 
-function shopPrice(pr) {
-  const box = el("div", { class: "sprice" });
-  if (pr.min) {
-    box.append(el("div", { class: "amt" }, el("bdi", { text: money(pr.min) }), el("small", { text: " تومان" })));
-    if (pr.max && pr.max !== pr.min) box.append(el("div", { class: "meta" }, el("bdi", { text: `تا ${money(pr.max)}` })));
-    if (pr.per_metre) box.append(el("div", { class: "meta", text: "قیمت متری" }));
-  } else box.append(el("div", { class: "amt" }, el("small", { text: pr.text })));
-  box.append(el("div", { class: "age" + (pr.old ? " old" : "") }, el("bdi", { text: pr.age }), pr.note ? `، ${pr.note}` : null));
-  return box;
-}
-
 function line(ic, text, cls) {
   return el("div", { class: "ln" + (cls ? " " + cls : "") }, icon(ic), el("span", { class: cls?.startsWith("open-") ? "st" : null, text }));
 }
@@ -572,25 +560,33 @@ function shopLinks(s) {
     el("a", { href, target: "_blank", rel: "noopener noreferrer nofollow", text })));
 }
 
+// A seller in four short rows, like a row on Torob's seller list: name and price · where and how old the price is ·
+// open when you'd get there and how far · small tags. The registered price, its age and «stock not confirmed» stay
+// three separate facts (brief).
 function shopCard(s, compact = false) {
-  const open = s.visit.open_at_arrival === "yes" ? "open-yes" : s.visit.open_at_arrival === "no" ? "open-no" : "";
+  const st = s.visit.open_at_arrival;
+  const open = st === "yes" || st === "tight" ? "open-yes" : st === "no" ? "open-no" : "";
+  const pr = s.price || {};
+  const labels = (s.reasons || []).slice(0, (s.reasons || []).length - (s.same_building_others ? 1 : 0));
   const card = el("article", { class: "card scard" + (compact ? " compact" : ""), "data-shop-id": s.shop_id },
-    el("div", { class: "shead" },
-      compact ? null : el("span", { class: "avatar" }, icon("store")),
-      el("div", { class: "sname" }, el("div", { class: "name", text: s.name }), s.area ? el("div", { class: "meta", text: s.area }) : null,
-        shopLinks(s)),
-      el("div", { class: "sprice-wrap" }, shopPrice(s.price), el("div", { class: "live-line", hidden: true, "data-live-shop": s.shop_id }))),
-    el("div", { class: "lines" },
-      line("pin", s.where, "where"),
-      line("clock", s.visit.text, open),
-      compact ? null : line("box", s.stock_label, "stock")));
-  if (!compact && s.reasons?.length) {
-    card.append(el("div", { class: "badges" }, s.reasons.map((r, i) =>
-      el("span", { class: "pill" + (s.badges?.includes("credit") && r === "قسطی" ? " green" : "") }, i === 0 ? icon("tag") : null, r))));
+    el("div", { class: "s1" }, el("div", { class: "name", text: s.name }),
+      el("div", { class: "amt" }, pr.min ? [pr.max && pr.max !== pr.min ? el("small", { text: "از " }) : null,
+        el("bdi", { text: money(pr.min) }), el("small", { text: pr.per_metre ? " تومان، متری" : " تومان" })] : el("small", { text: pr.text }))),
+    el("div", { class: "s2" }, el("span", { class: "where", text: s.where, title: s.where }),
+      el("bdi", { class: "age" + (pr.old ? " old" : ""), text: pr.age ? `قیمت ${pr.age}` : "" })),
+    el("div", { class: `s3 ${open}` }, el("i", { class: "dot" }), el("span", { text: s.visit.text })),
+    el("div", { class: "live-line", hidden: true, "data-live-shop": s.shop_id }));
+  if (!compact) {
+    card.append(el("div", { class: "tags" },
+      labels.map((r) => el("span", { class: "tag" + (r === "قسطی" ? " green" : r === "ارزان‌ترین" ? " red" : "") }, r)),
+      s.same_building_others ? el("span", { class: "tag", text: `+${fa(s.same_building_others)} تو همین پاساژ` }) : null,
+      el("span", { class: "tag stock", text: s.stock_label })));
+    const links = shopLinks(s);
+    if (links) card.append(links);
   }
   if (!compact) {
     const det = s.details;
-    card.append(el("details", {}, el("summary", { text: "جزئیات فروشنده" }),
+    card.append(el("details", { class: "sdet" }, el("summary", { text: "جزئیات" }),
       el("div", { class: "meta", text: det.payments.join("، ") }),
       el("div", { class: "meta", text: det.warranty }),
       el("div", { class: "meta", text: det.fast_delivery }),
@@ -603,8 +599,9 @@ function shopCard(s, compact = false) {
 
 function shopBlock(d) {
   const block = el("section");
-  if (d.product) block.append(el("div", { class: "block-h" }, el("h3", { text: `فروشنده‌های «${shortTitle(d.product.title)}»` }),
-    d.items?.length ? el("span", { text: `${fa(d.items.length + (d.more_count || 0))} فروشگاه` }) : null));
+  if (d.product) block.append(el("div", { class: "block-h" }, el("h3", { text: "فروشنده‌ها" }),
+    d.items?.length ? el("span", { text: `${fa(d.items.length + (d.more_count || 0))} فروشگاه` }) : null),
+    el("div", { class: "block-sub", text: shortTitle(d.product.title), title: d.product.title }));
   block.append(el("div", { class: "live-line live-summary", hidden: true }));
   if (d.product && (d.items?.length || d.more?.length)) {
     const pts = [...(d.items || []).map((s, i) => shopPoint(s, i + 1)), ...(d.more || []).slice(0, 12).map((s) => shopPoint(s))]
@@ -641,8 +638,8 @@ function updateShopCard(d) {
     d.price_change ? el("div", { text: d.price_change }) : null,
     d.location ? el("div", { text: "نشانی‌ای که گفت: " + d.location }) : null,
     d.hold_until ? el("div", { text: `تا ${fa(d.hold_until)} نگه می‌دارن` }) : null);
-  $(".lines", card).after(box);
-  const stock = $(".ln.stock", card);   // «موجودی: تأیید نشده» is now answered, by the simulated call above it
+  ($(".tags", card) || $(".s3", card)).after(box);
+  const stock = $(".stock", card);   // «موجودی: تأیید نشده» is now answered, by the simulated call above it
   if (stock) stock.hidden = true;
   const btn = card.querySelector(":scope > .btn");   // a shop that didn't have it is no longer the obvious next call
   if (btn && d.stock !== "simulated_confirmed") btn.className = "btn line";

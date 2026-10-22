@@ -560,7 +560,7 @@ def _hub_line(category: str) -> dict | None:
     if not h["buildings"] or h["spread"]:
         return None
     b = h["buildings"][0]
-    return {"text": f"بورس «{category}»: {b['kind']} {b['name']} ({to_fa_digits(b['shops'])} فروشنده)",
+    return {"text": f"بورسش: {b['kind']} {b['name']} · {to_fa_digits(b['shops'])} فروشنده",
             "categories": [category], "subject": category}
 
 

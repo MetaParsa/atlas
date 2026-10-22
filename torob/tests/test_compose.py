@@ -73,7 +73,8 @@ def test_prose_never_shows_ids_and_intro_keeps_to_choosing_help():
     b = board()
     assert b.name_ids("P1 برای باشگاه بهتره، P2 ارزون‌تره، P9 نه") == "«انکر R50i» برای باشگاه بهتره، «شیائومی Buds» ارزون‌تره، P9 نه"
     raw = {"blocks": [{"type": "pick", "id": "P1"}, {"type": "checklist", "items": ["پلمب", "سریال"]}]}
-    assert [x["type"] for x in compose.fill(raw, b, None, _ui_chip, intro=True)] == ["checklist"]
+    raw["blocks"].append({"type": "compare", "of": "products", "ids": ["P1", "P2"], "rows": ["price"]})
+    assert [x["type"] for x in compose.fill(raw, b, None, _ui_chip, intro=True)] == ["compare"]
     assert compose._trim("یک جمله‌ی کوتاه. و یه جمله‌ی خیلی خیلی بلندتر که جا نمی‌شه", 30) == "یک جمله‌ی کوتاه."
     assert compose.Board([dict(PRODUCTS[0], specs={"باتری": "40ساعت"})], [], {}, {}).row_value(
         "products", dict(PRODUCTS[0], specs={"باتری": "40ساعت"}), "باتری") == "40 ساعت"

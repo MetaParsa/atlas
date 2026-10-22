@@ -32,7 +32,7 @@ METRICS = {"price": ("قیمت ثبت‌شده (تومان)", min), "minutes": (
 # A reason or checklist line must not state a price, a duration or a time: those come only from the data.
 _ID = re.compile(r"(?<![A-Za-z0-9])([PS][0-9]{1,2})(?![0-9])")
 _DIGIT_WORD = re.compile(r"([0-9])([ء-ی])")
-INTRO_TYPES = {"compare", "bars", "checklist"}   # after new cards: help choosing, not a second recommendation
+INTRO_TYPES = {"compare"}   # after new cards: one table to help choose; checklists etc. only when asked (phones stay short)
 _STATED_NUMBER = re.compile(r"[0-9۰-۹]+\s*(?:تومان|تومن|هزار|میلیون|میلیارد|دقیقه|ساعت|روز|ماه|٪|%)|[0-9۰-۹]{1,2}:[0-9۰-۹]{2}")
 
 PROMPT = """تو بخش «چیدن جواب» دستیار خرید حضوری در تهران هستی. کارت‌هایی که الان روی صفحه است (با شناسه‌ی کوتاه):
@@ -66,8 +66,8 @@ blocks: صفر تا ۳ بلوک، فقط وقتی واقعاً به تصمیم �
 
 TASK_ANSWER = "کاربر پرسید: «{question}»\nبه همین سؤال جواب بده."
 TASK_INTRO = ("کاربر گفته بود: «{question}». کارت‌های محصول همین الان نشان داده شد. کمکش کن بین آن‌ها انتخاب کند: یک compare "
-              "با ردیف‌هایی که برای خواسته‌ی خودش مهم است، و اگر برای این نوع کالا چک‌کردن چیزی در مغازه مهم است، یک checklist "
-              "(pick و actions نه؛ کارت‌ها دکمه‌ی خودشان را دارند). text فقط یک جمله‌ی کوتاه باشد، حداکثر ۲۰ کلمه.")
+              "با ردیف‌هایی که برای خواسته‌ی خودش مهم است "
+              "(فقط همین یک بلوک؛ کارت‌ها دکمه‌ی خودشان را دارند). text فقط یک جمله‌ی کوتاه باشد، حداکثر ۲۰ کلمه.")
 
 
 def product_fact(card: dict, specs: list[tuple[str, str]]) -> dict:
