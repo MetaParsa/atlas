@@ -10,7 +10,7 @@ intent یکی از این‌هاست:
 - "ask_results": سؤالی درباره‌ی نتیجه‌هایی که الان نشان داده شده («کدومش زودتر می‌بنده؟»).
 - "other": هیچ‌کدام.
 
-need = {"product_type", "keywords" (۲ تا ۵ عبارت جست‌وجو، فارسی و انگلیسی), "category_hints", "budget_min", "budget_max" (تومان؛ «۳ میلیون» یعنی 3000000), "use_case", "must_have", "brand_pref", "named_product", "missing_info"}
+need = {"product_type", "keywords" (۲ تا ۵ عبارت جست‌وجو، فارسی و انگلیسی؛ همیشه کلمه‌ی خودِ کاربر برای نوع کالا را نگه دار، مثلاً «کتونی»، حتی وقتی پیام فقط جواب یک سؤال است؛ جواب را به آن اضافه کن («کتونی دویدن»)، جایش نگذار), "category_hints", "budget_min", "budget_max" (تومان؛ «۳ میلیون» یعنی 3000000), "use_case", "must_have", "brand_pref", "named_product", "missing_info"}
 
 conditions_patch فقط کلیدهایی که کاربر عوض کرد: radius_km, budget_min, budget_max, payment ("any" | "credit" | "credit_in_person"), fast_delivery, open ("any" | "now" | "at_arrival"), arrive_at ("HH:MM").
 
