@@ -127,6 +127,7 @@ function setBusy(on) {
   busy = on;
   document.body.classList.toggle("busy-all", on);
   $("#send").disabled = on;
+  $("#attach").disabled = on;
 }
 
 async function post(url, body) {
@@ -209,19 +210,49 @@ function showError(text) { leaveStart(); stream.append(el("div", { class: "error
 function leaveStart() { $("#start")?.remove(); $("#radish-dock").hidden = false; }
 function oops() { if (turn) turn.failed = true; Radish.set("oops"); }
 
-function say(text) {
-  if (!text.trim() || busy) return false;
-  if ($("#start")) remember(text);            // a search started from the start screen joins the recents
+const userBubble = (text, thumb) => el("div", { class: "bubble user" + (thumb ? " with-photo" : "") },
+  thumb?.startsWith("data:image/") ? el("img", { class: "photo", src: thumb, alt: "عکس کالا" }) : null,
+  text ? el("span", { text }) : null);
+
+function say(text, ph = null) {
+  text = text.trim();
+  if ((!text && !ph) || busy) return false;
+  if ($("#start") && text && !ph) remember(text);   // a typed search from the start screen joins the recents
   leaveStart();
-  stream.append(el("div", { class: "bubble user", text }));
-  post("/api/chat", { text });
+  stream.append(userBubble(text, ph?.thumb));
+  post("/api/chat", ph ? { text: text || null, image: ph.image, thumb: ph.thumb } : { text });
   return true;
 }
+
+// --- photo: the page shrinks it (≤1024 px JPEG + a small preview) and keeps it in the field until sent ------------
+let photo = null;
+async function shrink(file, max, quality) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = el("canvas", { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  return c.toDataURL("image/jpeg", quality);
+}
+async function attachPhoto(file) {
+  if (!file?.type.startsWith("image/") || busy) return;
+  try { photo = { image: await shrink(file, 1024, 0.82), thumb: await shrink(file, 240, 0.7) }; }
+  catch (_) { photo = null; showError("این عکس باز نشد؛ یه عکس دیگه امتحان کن."); }
+  renderPhoto();
+  $("#text").focus();
+}
+function renderPhoto() {
+  const chip = $("#photo");
+  chip.hidden = !photo;
+  if (photo) $("img", chip).src = photo.thumb;
+  syncSend();
+}
+const syncSend = () => $("#composer").classList.toggle("ready", !!photo || !!$("#text").value.trim());
 // `bubble`: what the user "said" by tapping (null = say nothing, e.g. a silent location change before any search).
 function chip(c, bubble = c.label) {
   if (busy) return;
   if (c.kind === "direct_call") {
-    if (bubble) { leaveStart(); stream.append(el("div", { class: "bubble user", text: bubble })); }
+    if (bubble) { leaveStart(); stream.append(userBubble(bubble)); }
     post("/api/chat", { chip: c, bubble: bubble || null });
   } else say(c.value || c.label);
 }
@@ -274,7 +305,7 @@ const handlers = {
   },
   card_update(d) { updateShopCard(d); },
   plan(d) { renderPlan(d, replaying); Radish.set("map"); },
-  user(d) { stream.append(el("div", { class: "bubble user", text: d.text })); },   // only in a replayed history
+  user(d) { stream.append(userBubble(d.text, d.image)); },   // only in a replayed history
   alternative(d) {
     stream.append(el("div", { class: "card alt" },
       el("div", { class: d.simulated ? "simbox sim" : "" }, el("span", { text: d.text }), d.simulated ? simTag() : null),
@@ -568,9 +599,26 @@ ro.observe(document.body); ro.observe($(".top"));
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const t = $("#text");
-  if (say(t.value)) t.value = "";             // keep the text if it couldn't be sent (busy)
+  if (say(t.value, photo)) { t.value = ""; photo = null; renderPhoto(); }   // keep both if it couldn't be sent (busy)
 });
-$("#text").addEventListener("input", (e) => { if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
+$("#text").addEventListener("input", (e) => { syncSend(); if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
+$("#attach").addEventListener("click", () => $("#file").click());
+$("#file").addEventListener("change", (e) => { attachPhoto(e.target.files[0]); e.target.value = ""; });
+$("#photo button").addEventListener("click", () => { photo = null; renderPhoto(); });
+$(".field").addEventListener("click", (e) => { if (e.target === e.currentTarget) $("#text").focus(); });
+$("#text").addEventListener("paste", (e) => {   // a copied screenshot or photo pastes straight in (PC)
+  const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/"));
+  if (f) { e.preventDefault(); attachPhoto(f); }
+});
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragover", (e) => { if (hasFiles(e)) { e.preventDefault(); $("#composer").classList.add("drag"); } });
+document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("#composer").classList.remove("drag"); });
+document.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  $("#composer").classList.remove("drag");
+  attachPhoto([...e.dataTransfer.files].find((x) => x.type.startsWith("image/")));
+});
 document.querySelectorAll("canvas.radish").forEach((c) => Radish.attach(c));
 renderSuggestions();
 Radish.set("happy");                          // says hello, then settles
@@ -612,7 +660,7 @@ async function restoreHistory() {
   try {
     const s = await (await fetch("/api/state")).json();
     hasResults = !!s.has_results;
-    const restored = hasResults && await restoreHistory();
+    const restored = await restoreHistory();   // any saved chat, even one that has no results yet
     setConditions(s.conditions);
     if (s.plan) renderPlan(s.plan, true);     // a reload keeps the shopping plan
     if (hasResults && !restored) $("#start .resume")?.removeAttribute("hidden");

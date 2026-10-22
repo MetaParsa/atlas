@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from core.agent_loop import Emitter
 from core.llm import FakeLLM, LLMClient, from_env
 from torob import boot, store
+from torob.agents import vision
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
 from torob.router import conditions_event, rule_route, run_turn
@@ -35,6 +36,8 @@ def _fake_script(role: str, messages: list[dict]) -> dict | str:
     other roles get a plain sentence, never raw JSON in the chat."""
     if role == "router":
         return rule_route(messages[-1]["content"]).model_dump(mode="json")
+    if role == "vision":
+        return "نامعلوم"   # without a model the photo can't be read; the chat asks for the name instead
     return "در حالت آزمایشی این جواب ساده است؛ از کارت‌ها و دکمه‌ها استفاده کن."
 
 
@@ -114,10 +117,15 @@ def areas() -> list[dict]:
         raise HTTPException(503, "داده‌ها در حال آماده‌سازی…")
 
 
+MAX_IMAGE, MAX_THUMB = 2_000_000, 60_000   # data-URL lengths; the page sends ~300 KB and ~15 KB
+
+
 class ChatIn(BaseModel):
     text: str | None = Field(None, max_length=MAX_TEXT)
     chip: Chip | None = None
     bubble: str | None = Field(None, max_length=200)   # what the page showed as the user's message for a tapped chip
+    image: str | None = Field(None, max_length=MAX_IMAGE)   # a photo (data URL, ≤1024 px JPEG made by the page)
+    thumb: str | None = Field(None, max_length=MAX_THUMB)   # its small preview, kept in the chat history
 
 
 WEB = Path(__file__).parent / "web"
@@ -234,7 +242,12 @@ class RefineIn(BaseModel):
 
 @app.post("/api/chat")
 def chat(body: ChatIn, request: Request, sid: str | None = Cookie(default=None, max_length=64)):
-    return _turn_response(request, sid, text=body.text, chip=body.chip, bubble=body.bubble)
+    image = body.image if vision.is_image(body.image, MAX_IMAGE) else None
+    if not image and not (body.text or "").strip() and not body.chip:
+        return JSONResponse({"error": "یه چیزی بنویس یا یه عکس بفرست."}, status_code=422)
+    thumb = body.thumb if image and vision.is_image(body.thumb, MAX_THUMB) else None
+    return _turn_response(request, sid, text=(body.text or "").strip() or None, chip=body.chip, bubble=body.bubble,
+                          image=image, thumb=thumb)
 
 
 @app.post("/api/refine")
@@ -245,7 +258,7 @@ def refine(body: RefineIn, request: Request, sid: str | None = Cookie(default=No
 
 
 def _turn_response(request: Request, sid: str | None, text: str | None = None, chip: Chip | None = None,
-                   bubble: str | None = None):
+                   bubble: str | None = None, image: str | None = None, thumb: str | None = None):
     if not chat_limit.allow(client_ip(request)):
         return JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
     adb = appdb()
@@ -256,16 +269,27 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
             return JSONResponse({"error": "صبر کن جواب قبلی تموم بشه."}, status_code=409)
         _busy[sid] = time.monotonic()
     em = Emitter(sid, sink=adb.log_event)
-    said = text if text is not None else bubble
-    if said and said.strip():
-        adb.log_event(sid, "user", {"text": said.strip()})   # the user's side of the chat, for /api/history
+    said = (text if text is not None else bubble or "").strip()
+    if said or image:   # the user's side of the chat, for /api/history (a photo keeps only its small preview)
+        adb.log_event(sid, "user", {"text": said, **({"image": thumb} if thumb else {})})
     first_search = text is not None and state.last_block_kind == "none"
 
     delay = float(os.environ.get("CALL_LINE_DELAY", "0.7"))
 
     def stream():
         try:
-            for chunk in run_turn(llm(), state, em, text=text, chip=chip):
+            query = text
+            if image:   # a photo becomes a search query; an unreadable one asks for the name instead of guessing
+                yield em.emit("status", {"text": "دارم عکس رو نگاه می‌کنم…", "done": False})
+                seen = vision.identify(llm(), image, sid)
+                yield em.emit("status", {"text": f"تو عکس: {seen}" if seen else "عکس رو نشناختم", "done": True})
+                if seen:
+                    query = f"{text} {seen}" if text else seen
+                elif not text:
+                    yield em.emit("message", {"text": "از عکس نفهمیدم چه کالاییه؛ اسم یا مدلش رو بنویس تا پیداش کنم."})
+                    yield em.emit("done", {})
+                    return
+            for chunk in run_turn(llm(), state, em, text=query, chip=chip):
                 yield chunk
                 if delay and chunk.startswith("event: call_line"):
                     time.sleep(delay)   # the call reads like a call; the facts are already decided

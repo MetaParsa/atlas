@@ -170,3 +170,40 @@ def test_default_llm_model_is_claude_haiku(monkeypatch):
     for k in ("MODEL_ROUTER", "MODEL_CHAT", "MODEL_CALL"):
         monkeypatch.delenv(k, raising=False)
     assert set(from_env().models.values()) == {"anthropic/claude-haiku-5.5"}
+
+
+PHOTO = "data:image/jpeg;base64," + "A" * 400   # shape only; nothing decodes it without a model
+
+
+def test_vision_reads_only_a_clear_answer():
+    from torob.agents import vision
+    ask = lambda answer: vision.identify(LLMClient([], {}, fake=FakeLLM(lambda r, m: answer)), PHOTO, "s")
+    assert ask("«شارژر اپل ۲۰ وات».") == "شارژر اپل ۲۰ وات"
+    assert ask("نامعلوم") is None and ask("") is None and ask("خ " * 40) is None
+    assert vision.is_image(PHOTO, 10_000) and not vision.is_image("data:text/html;base64,AAAA", 10_000)
+    assert not vision.is_image("javascript:alert(1)", 10_000) and not vision.is_image(PHOTO, 100)
+
+
+def test_llm_budget_counts_a_photo_at_a_flat_rate():
+    from core.llm import IMAGE_TOKENS, estimate_tokens
+    big = "data:image/jpeg;base64," + "A" * 300_000
+    msg = [{"role": "user", "content": [{"type": "text", "text": "x"}, {"type": "image_url", "image_url": {"url": big}}]}]
+    assert IMAGE_TOKENS <= estimate_tokens(msg) < IMAGE_TOKENS + 100
+
+
+@needs_db
+def test_photo_without_a_model_asks_for_the_name_and_keeps_its_preview(client):
+    r = client.post("/api/chat", json={"image": PHOTO, "thumb": PHOTO})
+    assert r.status_code == 200 and "اسم یا مدلش رو بنویس" in r.text and "product_cards" not in r.text
+    first = client.get("/api/history").json()["events"][0]
+    assert first == {"event": "user", "data": {"text": "", "image": PHOTO}}
+    assert client.post("/api/chat", json={"image": "data:text/html;base64,AAAA"}).status_code == 422   # not a photo, no text
+
+
+@needs_db
+def test_photo_that_the_model_reads_becomes_the_search(client, monkeypatch):
+    from torob import app as app_mod
+    script = lambda role, m: "شارژر آیفون" if role == "vision" else app_mod._fake_script(role, m)
+    monkeypatch.setattr(app_mod, "llm", lambda: LLMClient([], {}, fake=FakeLLM(script)))
+    r = client.post("/api/chat", json={"image": PHOTO, "thumb": PHOTO})
+    assert "تو عکس: شارژر آیفون" in r.text and "product_cards" in r.text
