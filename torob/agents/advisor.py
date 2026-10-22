@@ -48,6 +48,7 @@ class Pick:
     same_title_ids: list[str] = field(default_factory=list)
     spec_lines: list[str] = field(default_factory=list)
     why: str = ""
+    copy_suspect: bool = False   # the model thinks it's a copy («طرح») of a brand-name product
 
     @property
     def area_priced(self) -> bool:
@@ -77,6 +78,7 @@ class Pick:
             "sellers_in_area": self.area.sellers, "sellers_total": self.c.sellers_total,
             "fresh_in_area": self.area.fresh, "over_budget_pct": self.over_budget_pct,
             "spec_lines": self.spec_lines, "same_title_variants": len(self.same_title_ids), "why": self.why,
+            "copy_suspect": self.copy_suspect,
         }
 
 
@@ -92,6 +94,7 @@ class AdvisorResult:
     named: Pick | None = None
     n_candidates: int = 0
     n_nearby: int = 0
+    n_matching: int | None = None   # how many the model judged to be the thing asked for (None = no model)
 
 
 def _fresh_cutoff() -> str:
@@ -203,8 +206,9 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
 
     reps, same_title = _dedupe(cands)
     reps = _brand_filter(need, reps, notes)
-    if judge and (kept := judge(reps)):   # only the products that are the thing asked for compete
-        reps = kept
+    n_found, n_matching, copies = len(reps), None, set()
+    if judge and (j := judge(reps)):   # only the products that are the thing asked for compete
+        reps, copies, n_matching = j.kept, j.copies, len(j.kept)
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
     budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)
@@ -271,6 +275,8 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     if named:
         named.same_title_ids = same_title.get(named.c.product_id, [])
     for p in [*picks, *([named] if named else [])]:
+        p.copy_suspect = p.c.product_id in copies
+    for p in [*picks, *([named] if named else [])]:
         p.why = why_line(p, budget)
 
     if in_area and picks and min(p.area.sellers for p in picks) < SELLER_FLOOR:
@@ -280,7 +286,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     if question is None and not named:
         question = _question(need, cond, price, picks)
     return AdvisorResult(picks, cats, notes, _compare_rows(picks), None if named else question,
-                         floor_used, in_area, named, n_candidates=len(reps),
+                         floor_used, in_area, named, n_candidates=n_found, n_matching=n_matching,
                          n_nearby=sum(1 for c in reps if stats.get(c.product_id, AreaStat()).sellers > 0))
 
 

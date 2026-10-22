@@ -87,13 +87,15 @@ def test_asking_for_an_accessory_still_finds_accessories():
 def test_relevance_judge_keeps_what_the_model_names_and_falls_back_cleanly():
     from types import SimpleNamespace as NS
     from torob.agents import relevance
-    cands = [NS(title="هندزفری بلوتوثی انکر", category="هدفون"), NS(title="کاور سیلیکونی هایلو", category="کیف و کاور"),
-             NS(title="هندزفری کیو سی وای", category="هدفون")]
+    cands = [NS(product_id="p1", title="هندزفری بلوتوثی انکر", category="هدفون", price_median=1_400_000),
+             NS(product_id="p2", title="کاور سیلیکونی هایلو", category="کیف و کاور", price_median=300_000),
+             NS(product_id="p3", title="هندزفری کیو سی وای", category="هدفون", price_median=900_000)]
     seen = []
     def script(role, msgs):
         seen.append((role, msgs[0]["content"]))
-        return {"keep": [0, 2, 99]}
+        return {"keep": [0, 2, 99], "copies": [2, 1]}   # a copy that wasn't kept is ignored
     judged = relevance.keep(LLMClient([], {}, fake=FakeLLM(script)), "هندزفری برای باشگاه", cands, "s")
-    assert judged == [cands[0], cands[2]] and seen[0][0] == "judge" and "1 | کاور سیلیکونی هایلو | کیف و کاور" in seen[0][1]
+    assert judged.kept == [cands[0], cands[2]] and judged.copies == {"p3"} and seen[0][0] == "judge"
+    assert "1 | کاور سیلیکونی هایلو | کیف و کاور | 300000" in seen[0][1]
     assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: {"keep": []})), "x", cands, "s") is None    # nothing → no judgement
     assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: "not json")), "x", cands, "s") is None      # bad answer → rules

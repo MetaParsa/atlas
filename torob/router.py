@@ -461,6 +461,8 @@ def _relevance_judge(state: SessionState, em: Emitter):
         return None
     said = [h["content"] for h in state.history if h.get("role") == "user"][-2:]
     want = " / ".join(said) or (state.need.named_product or state.need.product_type if state.need else "")
+    if want and state.conditions.budget_max:   # a budget set on the strip counts like one typed in the chat
+        want += f" (budget: up to {state.conditions.budget_max:,} toman)"
     return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
 
 
@@ -484,7 +486,8 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True) -> Iterato
     _select_product(state, None)   # a new set of products: no shop or plan from the previous one is callable
     state.product_ids = [c["product_id"] for c in cards]
     state.last_block_kind = "products"
-    status = (f"{to_fa_digits(res.n_candidates)} مدل پیدا شد → {to_fa_digits(res.n_nearby)} تا نزدیکت فروشنده دارن"
+    matching = f" → {to_fa_digits(res.n_matching)} تا همونیه که خواستی" if res.n_matching is not None else ""
+    status = (f"{to_fa_digits(res.n_candidates)} مدل پیدا شد{matching} → {to_fa_digits(res.n_nearby)} تا نزدیکت فروشنده دارن"
               f" → {to_fa_digits(len(cards))} تا رو مقایسه کردم") if cards else "چیزی پیدا نشد"
     yield em.emit("status", {"text": status, "done": True})
     yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(c) for c in cards],

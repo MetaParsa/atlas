@@ -367,6 +367,7 @@ function productBlock(d) {
           `قیمت ثبت‌شده ${scope}`),
         sellers ? el("div", {}, el("span", { class: "pill blue" }, icon("store"), `${fa(sellers)} فروشنده ${scope}`)) : null,
         p.over_budget_pct ? el("div", { class: "over", text: `${fa(p.over_budget_pct)}٪ بالاتر از بودجه` }) : null,
+        p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی از عنوان و قیمت)" }) : null,
         p.spec_lines?.length ? el("ul", { class: "specs" }, p.spec_lines.map((s) => el("li", { text: s, title: s }))) : null,
         el("div", { class: "why", text: "چرا: " + p.why }),
         p.button ? chipButton(p.button, "btn blue", `فروشنده‌های «${shortTitle(p.title)}»`, "store") : null)));
