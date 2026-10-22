@@ -421,7 +421,8 @@ async function liveShops(productId, ids, block) {
     for (const [sid, v] of Object.entries(r.by_shop || {})) {
       const line = block.querySelector(`[data-live-shop="${CSS.escape(sid)}"]`);
       if (!line) continue;
-      line.replaceChildren(liveDot(), el("span", { text: `ترب الان: ${money(v.price)}` + (v.changed ? ` (${v.changed})` : "") }));
+      line.replaceChildren(liveDot(), el("span", { text: v.price ? `ترب الان: ${money(v.price)}` + (v.changed ? ` (${v.changed})` : "")
+        : `همین ساختمان در ترب: ${fa(v.spot_count)} فروشنده، از ${money(v.spot_min)}` }));
       line.hidden = false;
     }
   } catch (_) {}

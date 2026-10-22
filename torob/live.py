@@ -7,7 +7,8 @@ what they cost *now*:
   The dataset title is searched and only an exact match counts (same model codes, close title); otherwise nothing.
 - shops: `base-product/map/sellers` gives every in-person seller with its live price, how long ago it changed and
   its real coordinates. Dataset shops have real coordinates too, so a shop card gets Torob's live price only when
-  exactly one live seller sits at that spot; in a crowded passage there is no reliable match and nothing is shown.
+  exactly one live seller sits at that spot. In a crowded passage there is no reliable match, so the card says only
+  what is true: how many sellers in that building have it on Torob now, and from what price.
   Real shop names are never shown: the dataset hides them on purpose.
 
 Politeness (Torob has no official API): one request every 2 s across the server, a daily cap, an hour's cache for
@@ -112,7 +113,8 @@ class LiveTorob:
     # --- shops: live in-person prices, matched to dataset shops by location -----------------------------------
 
     def shops(self, product_id: str, title: str, shops: list[dict]) -> dict:
-        """{"status", "tehran": {"count", "min", "max"}, "by_shop": {shop_id: {"price", "changed", "open_now"}}}."""
+        """{"status", "tehran": {"count", "min", "max"},
+            "by_shop": {shop_id: {"price", "changed", "open_now"} | {"spot_count", "spot_min"}}}."""
         prk = (self.cache.live_get(f"prk|{product_id}", TTL_MATCH) or {}).get("prk")
         if not prk:
             p = self.product(product_id, title)
@@ -132,6 +134,8 @@ class LiveTorob:
                 s = near[0]
                 out["by_shop"][shop["shop_id"]] = {"price": int(s["price"]), "changed": s.get("last_price_change_date"),
                                                    "open_now": s.get("is_open")}
+            elif near:
+                out["by_shop"][shop["shop_id"]] = {"spot_count": len(near), "spot_min": min(int(s["price"]) for s in near)}
         return out
 
 

@@ -77,7 +77,8 @@ def test_shop_gets_a_live_price_only_when_one_seller_is_at_that_spot():
     assert lv.cached_shop_price("product_1", shops[0]) == 3300000
     crowded = dict(SELLERS, result=SELLERS["result"] + [{"price": 3350000, "location": {"lat": AT[0], "lon": AT[1]}}])
     lv2 = client(lambda req: httpx.Response(200, json=SEARCH if req.url.path.endswith("/search/") else crowded))
-    assert lv2.shops("product_1", TITLE, shops[:1])["by_shop"] == {}                       # two at the spot: no guess
+    assert lv2.shops("product_1", TITLE, shops[:1])["by_shop"] == {"shop_a": {"spot_count": 2, "spot_min": 3300000}}  # no guess
+    assert lv2.cached_shop_price("product_1", shops[0]) is None
 
 
 def test_daily_cap_and_switch_are_respected():
