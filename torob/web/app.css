@@ -83,7 +83,7 @@ bdi { unicode-bidi: isolate; }
 main { flex: 1; padding: 16px 16px 64px; display: flex; flex-direction: column; gap: var(--gap); }
 .bubble { max-width: 82%; padding: 8px 14px; border-radius: 20px; font-size: 15px; line-height: 1.65; }
 .bubble.user { align-self: flex-start; background: var(--blue); color: var(--blue-ink); border-start-start-radius: 6px; }
-.bubble.agent { align-self: flex-end; background: var(--bubble); border-start-end-radius: 6px; }
+.bubble.agent { align-self: flex-end; background: var(--bubble); border-start-end-radius: 6px; white-space: pre-line; }
 .status { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
           background: var(--fill); border-radius: 999px; padding: 3px 12px; text-align: center; }
 /* the assistant speaks as Torob's radish */

@@ -777,10 +777,11 @@ def answer_results(state: SessionState, em: Emitter, text: str) -> Iterator[str]
     if em.llm is not None and getattr(em.llm, "enabled", False):
         tool = Tool("shown_shops", "facts about the shops currently shown to the user", {"type": "object", "properties": {}},
                     lambda: {"shops": shown})
-        msgs = [{"role": "system", "content": "به فارسی محاوره‌ای و کوتاه جواب بده. فقط از خروجی ابزار shown_shops عدد و "
+        msgs = [{"role": "system", "content": "به فارسی محاوره‌ای و کوتاه جواب بده (حداکثر ۴ خط کوتاه، متن ساده بدون Markdown: "
+                                              "بدون ** یا # یا جدول). فقط از خروجی ابزار shown_shops عدد و "
                                               "ساعت نقل کن؛ چیزی که نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودی تأییدشده ندان."},
                 {"role": "user", "content": text}]
-        for chunk in tool_loop(em.llm, msgs, [tool], em, max_steps=3, max_tokens=300):
+        for chunk in tool_loop(em.llm, msgs, [tool], em, max_steps=3, max_tokens=700):   # Persian is token-heavy
             yield chunk
         state.remember("assistant", em.events[-1][1].get("text", ""))
         return

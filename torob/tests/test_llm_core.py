@@ -162,3 +162,11 @@ def test_anthropic_key_means_claude_only_no_gateway(monkeypatch):
     monkeypatch.setenv("LLM_PRIMARY_API_KEY", "gw-key")
     providers = from_env().providers
     assert len(providers) == 1 and isinstance(providers[0], AnthropicProvider) and "test-key" not in repr(providers[0])
+
+
+def test_chat_answers_are_plain_text():
+    from core.agent_loop import plain_text
+    md = "نزدیک‌ترین‌ها:\n\n- **دیسورا پاکیار**: حدود ۶ دقیقه\n* __نودیس آران__: ۹ دقیقه\n## نکته: ساعت ثبت نشده"
+    out = plain_text(md)
+    assert "**" not in out and "__" not in out and "#" not in out
+    assert "• دیسورا پاکیار: حدود ۶ دقیقه" in out and "• نودیس آران: ۹ دقیقه" in out and out.endswith("نکته: ساعت ثبت نشده")
