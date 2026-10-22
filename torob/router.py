@@ -22,6 +22,7 @@ from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import followup
 from torob.agents import relevance
+from torob import live as live_torob
 from torob.agents import shops as shops_agent
 from torob.logic import hours as H
 from torob.logic.geo import haversine_m
@@ -356,8 +357,10 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
     call_id = f"c{len(state.calls) + 1}"
     earlier = next((c for c in reversed(state.calls.values()) if c.get("shop_id") == shop_id
                     and c.get("product_id") == res.product["product_id"] and c.get("outcome") == "ok"), None)
+    lv = live_torob.CURRENT   # cache only: the live price the shop card already showed, if any
+    live_price = lv.cached_shop_price(res.product["product_id"], o.shop) if lv else None
     plan, result = call_engine.run_call(o, res.product, state.conditions.payment, call_id, want_hold=hold,
-                                        llm=em.llm, session_id=em.session_id, earlier=earlier)
+                                        llm=em.llm, session_id=em.session_id, earlier=earlier, live_price=live_price)
     s = o.shop
     yield em.emit("call_start", {
         "call_id": call_id, "shop_id": shop_id, "shop_name": s["name"], "title": f"تماس با {s['name']}، شبیه‌سازی",

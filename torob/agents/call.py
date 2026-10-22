@@ -104,7 +104,9 @@ def _stock_chance(o: ShopOffer, now: datetime) -> float:
     return 0.85 if days <= 7 else 0.70 if days <= 30 else 0.50 if days <= 90 else 0.30
 
 
-def make_truth(o: ShopOffer, product: dict, now: datetime) -> Truth:
+def make_truth(o: ShopOffer, product: dict, now: datetime, live_price: int | None = None) -> Truth:
+    """`live_price`: Torob's live price for this very shop (torob/live.py), when it is known: the shopkeeper then
+    quotes the real current price instead of the simulated drift."""
     s = o.shop
     rng = _rng(s["shop_id"], product["product_id"])
     week = H.from_json(s["hours"])
@@ -118,7 +120,9 @@ def make_truth(o: ShopOffer, product: dict, now: datetime) -> Truth:
                                   (product["product_id"],)).fetchone()
         base = row[0] if row else None
     price = None
-    if base:
+    if live_price:
+        price = live_price
+    elif base:
         months = 0 if not o.changed_at else max(0, (now - datetime.fromisoformat(o.changed_at)).days) / 30
         price = int(round(base * (1 + min(MAX_DRIFT, DRIFT_PER_MONTH * months)) / 10_000) * 10_000) or base
     closes_txt = closes.strftime("%H:%M") if state == "open" and closes else None
@@ -249,11 +253,12 @@ def _same_numbers(a: str, b: str) -> bool:
 
 
 def run_call(o: ShopOffer, product: dict, payment_filter: str, call_id: str, *, want_hold: bool = False,
-             llm=None, session_id: str = "-", earlier: dict | None = None) -> tuple[CallPlan, CallResult]:
+             llm=None, session_id: str = "-", earlier: dict | None = None,
+             live_price: int | None = None) -> tuple[CallPlan, CallResult]:
     """`earlier`: this shop's answered call about this product in the session, if any. A call-back asks only what's
     new and carries the earlier answers (same shop, minutes ago) into its result."""
     now = clock.now()
-    truth = make_truth(o, product, now)
+    truth = make_truth(o, product, now, live_price)
     asked = frozenset(earlier.get("asked") or ["stock", "price", "hours", "credit", "location"]) if earlier else frozenset()
     plan = plan_questions(o, product, payment_filter, now, want_hold, asked)
     rng = _rng(o.shop["shop_id"] + "|script", product["product_id"])

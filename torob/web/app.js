@@ -362,7 +362,10 @@ function productBlock(d) {
   block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
     el("span", {}, `${fa(items.length)} مدل`, el("span", { class: "hint", text: "، بکش برای بقیه" }))));
   const row = el("div", { class: "row" });
+  const liveLines = [];
   for (const p of items) {
+    const liveLine = el("div", { class: "live-line", hidden: true });
+    liveLines.push([p.product_id, liveLine]);
     const scope = p.price_scope === "area" ? "نزدیکت" : "در تهران";
     const sellers = p.price_scope === "area" ? p.sellers_in_area : p.sellers_total;
     row.append(el("article", { class: "card pcard" }, productImage(p),
@@ -372,6 +375,7 @@ function productBlock(d) {
                     : el("div", { class: "price-big" }, el("small", { text: "قیمت ثبت نشده" })),
         el("div", { class: "meta" }, p.price_max && p.price_max !== p.price_min ? el("bdi", { text: `تا ${money(p.price_max)}، ` }) : null,
           `قیمت ثبت‌شده ${scope}`),
+        liveLine,
         sellers ? el("div", {}, el("span", { class: "pill blue" }, icon("store"), `${fa(sellers)} فروشنده ${scope}`)) : null,
         p.over_budget_pct ? el("div", { class: "over", text: `${fa(p.over_budget_pct)}٪ بالاتر از بودجه` }) : null,
         p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی از عنوان و قیمت)" }) : null,
@@ -386,7 +390,41 @@ function productBlock(d) {
       d.compare_rows.map((r) => el("tr", {}, el("td", { text: r.key }), r.values.map((v) => el("td", { text: v })))));
     block.append(el("details", { class: "compare-wrap" }, el("summary", { text: "مقایسه‌ی مشخصات" }), t));
   }
+  liveProducts(liveLines);
   return block;
+}
+
+// --- live prices from torob.com: asked after the cards appear, cached and rate-limited on the server -----------
+// (torob/live.py). Always labelled as Torob's live price, apart from the dataset's registered price.
+const liveDot = () => el("span", { class: "live-dot", "aria-hidden": "true" });
+async function liveProducts(lines) {
+  for (const [id, line] of lines) {   // one at a time: the server spaces requests to Torob anyway
+    try {
+      const r = await (await fetch(`/api/live/product/${encodeURIComponent(id)}`)).json();
+      if (r.status !== "ok") continue;
+      line.replaceChildren(liveDot(), el("span", { text: `قیمت امروز در ترب: از ${money(r.price_min)} تومان`
+        + (r.sellers ? ` · ${fa(r.sellers)} فروشگاه` : "") }));
+      line.hidden = false;
+    } catch (_) {}
+  }
+}
+async function liveShops(productId, ids, block) {
+  if (!productId || !ids.length) return;
+  try {
+    const r = await (await fetch(`/api/live/shops/${encodeURIComponent(productId)}?ids=${ids.map(encodeURIComponent).join(",")}`)).json();
+    if (r.status !== "ok") return;
+    const sum = $(".live-summary", block);
+    if (sum && r.tehran?.count) {
+      sum.replaceChildren(liveDot(), el("span", { text: `الان در ترب: ${fa(r.tehran.count)} فروشنده‌ی حضوری در تهران، از ${money(r.tehran.min)} تومان` }));
+      sum.hidden = false;
+    }
+    for (const [sid, v] of Object.entries(r.by_shop || {})) {
+      const line = block.querySelector(`[data-live-shop="${CSS.escape(sid)}"]`);
+      if (!line) continue;
+      line.replaceChildren(liveDot(), el("span", { text: `ترب الان: ${money(v.price)}` + (v.changed ? ` (${v.changed})` : "") }));
+      line.hidden = false;
+    }
+  } catch (_) {}
 }
 
 // --- shops (steps 2–3) --------------------------------------------------------------------------------------------
@@ -422,7 +460,7 @@ function shopCard(s, compact = false) {
       compact ? null : el("span", { class: "avatar" }, icon("store")),
       el("div", { class: "sname" }, el("div", { class: "name", text: s.name }), s.area ? el("div", { class: "meta", text: s.area }) : null,
         shopLinks(s)),
-      shopPrice(s.price)),
+      el("div", { class: "sprice-wrap" }, shopPrice(s.price), el("div", { class: "live-line", hidden: true, "data-live-shop": s.shop_id }))),
     el("div", { class: "lines" },
       line("pin", s.where, "where"),
       line("clock", s.visit.text, open),
@@ -448,9 +486,11 @@ function shopBlock(d) {
   const block = el("section");
   if (d.product) block.append(el("div", { class: "block-h" }, el("h3", { text: `فروشنده‌های «${shortTitle(d.product.title)}»` }),
     d.items?.length ? el("span", { text: `${fa(d.items.length + (d.more_count || 0))} فروشگاه` }) : null));
+  block.append(el("div", { class: "live-line live-summary", hidden: true }));
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (d.relaxed?.chip) block.append(el("div", { class: "chips start-align" }, chipButton(d.relaxed.chip)));
   (d.items || []).forEach((s) => block.append(shopCard(s)));
+  liveShops(d.product?.product_id, [...(d.items || []), ...(d.more || [])].map((s) => s.shop_id).slice(0, 30), block);
   if (d.junk_line) block.append(el("div", { class: "junk", text: d.junk_line }));
   if (d.more?.length) {
     block.append(el("details", { class: "more" }, el("summary", { text: `${fa(d.more_count)} فروشگاه دیگه هم دارن` }),

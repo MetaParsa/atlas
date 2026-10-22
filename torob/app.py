@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from core.agent_loop import Emitter
 from core.llm import FakeLLM, LLMClient, from_env
-from torob import boot, store
+from torob import boot, live as live_torob, store
 from torob.agents import vision
 from torob.appdb import AppDB
 from torob.models import MAX_TEXT, Chip
@@ -28,6 +28,7 @@ app = FastAPI(title="Torob in-store agent")
 @app.on_event("startup")
 def _boot() -> None:
     boot.ensure_db_async()   # fallback only: builds torob.db on the disk if it's missing and DATASET_URL is set
+    live()                   # live Torob prices: the router reads cached ones for the simulated call
 STREAM_HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -77,6 +78,7 @@ class RateLimiter:
 
 
 chat_limit = RateLimiter(20, 60)
+live_limit = RateLimiter(40, 60)   # the page asks for live prices card by card; Torob itself is protected in live.py
 _busy: dict[str, float] = {}     # sid -> turn start; expires so a stream that never started can't lock a session
 _busy_lock = threading.Lock()
 BUSY_TTL_S = 60
@@ -173,6 +175,44 @@ def session_state(response: Response, sid: str | None = Cookie(default=None, max
             "plan": state.plan}
 
 
+@lru_cache(maxsize=1)
+def live() -> live_torob.LiveTorob:
+    lv = live_torob.LiveTorob(appdb())
+    live_torob.CURRENT = lv   # the router reads cached live prices for the simulated call from here
+    return lv
+
+
+def _product_title(product_id: str) -> str:
+    if len(product_id) > 64:
+        raise HTTPException(422, "شناسه‌ی نامعتبر")
+    row = store.get().execute("SELECT title FROM products WHERE product_id = ?", (product_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "این کالا در دیتاست نیست")
+    return row["title"]
+
+
+@app.get("/api/live/product/{product_id}")
+def live_product(product_id: str, request: Request) -> dict:
+    """Today's lowest price for a dataset product on torob.com (cached, polite; see torob/live.py)."""
+    if not live_limit.allow(client_ip(request)):
+        return {"status": "busy"}
+    return live().product(product_id, _product_title(product_id))
+
+
+@app.get("/api/live/shops/{product_id}")
+def live_shops(product_id: str, request: Request, ids: str = "") -> dict:
+    """Live in-person prices in Tehran for a dataset product, matched to the shown dataset shops by location."""
+    if not live_limit.allow(client_ip(request)):
+        return {"status": "busy"}
+    title = _product_title(product_id)
+    shop_ids = [i for i in ids.split(",") if i][:30]
+    if len(ids) > 2000 or any(len(i) > 64 for i in shop_ids):
+        raise HTTPException(422, "شناسه‌ی نامعتبر")
+    rows = store.get().execute(f"SELECT shop_id, lat, lon FROM shops WHERE shop_id IN ({','.join('?' * len(shop_ids))})",
+                               shop_ids).fetchall() if shop_ids else []
+    return live().shops(product_id, title, [dict(r) for r in rows if r["lat"] is not None])
+
+
 @app.get("/api/popular")
 def popular() -> dict:
     """The start screen's suggestions: the searches people typed most (only ones that found products)."""
@@ -223,7 +263,9 @@ def admin() -> HTMLResponse:
                           ("زمان پاسخ سرور p50 / p95 (ms، بدون مکث نمایشی تماس)", f"{fmt(st['p50_ms'])} / {fmt(st['p95_ms'])}"),
                           ("تماس شبیه‌سازی‌شده", st["calls"]),
                           *[(outcomes.get(k, k), v) for k, v in st["call_outcomes"].items()]]),
-        ("از آخرین راه‌اندازی", [("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected)]),
+        ("قیمت زنده از ترب", [("درخواست امروز به ترب", f"{fmt(live().polite.used_today)} از {fmt(live().polite.cap)}"),
+                              ("فعال", "بله" if live().enabled else "خیر")]),
+        ("از آخرین راه‌اندازی", [("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected + live_limit.rejected)]),
     ]
     errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
                    for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS events(
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS searches(text TEXT PRIMARY KEY, n INTEGER NOT NULL, last REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS live_cache(key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched REAL NOT NULL);
 """
 KEEP_DAYS = 7
 _PRIVATE = re.compile(r"[0-9۰-۹٠-٩]{5,}|@|https?:|www\.", re.I)   # phone/card numbers, emails, links never become suggestions
@@ -107,9 +108,22 @@ class AppDB:
             rows = self._con.execute("SELECT text FROM searches ORDER BY n DESC, last DESC LIMIT ?", (limit,)).fetchall()
         return [r[0] for r in rows]
 
+    def live_get(self, key: str, max_age: float) -> dict | None:
+        """A cached live-Torob answer no older than `max_age` seconds (torob/live.py)."""
+        with self._lock:
+            row = self._con.execute("SELECT value, fetched FROM live_cache WHERE key = ?", (key,)).fetchone()
+        return json.loads(row[0]) if row and time.time() - row[1] <= max_age else None
+
+    def live_put(self, key: str, value: dict) -> None:
+        with self._lock:
+            self._con.execute("INSERT INTO live_cache(key, value, fetched) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE "
+                              "SET value = excluded.value, fetched = excluded.fetched",
+                              (key, json.dumps(value, ensure_ascii=False), time.time()))
+
     def purge(self, keep_days: int = KEEP_DAYS) -> None:
         cutoff = time.time() - keep_days * 86400
         with self._lock:
             self._con.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
             self._con.execute("DELETE FROM sessions WHERE updated < ?", (cutoff,))
             self._con.execute("DELETE FROM searches WHERE last < ?", (cutoff,))
+            self._con.execute("DELETE FROM live_cache WHERE fetched < ?", (time.time() - 2 * 86400,))

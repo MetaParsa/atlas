@@ -56,8 +56,14 @@ def test_show_shops_only_for_shown_products():
 
 
 def test_named_model_skips_to_shops():
-    s = SessionState()
-    events, _ = turn(s, text="گوشی سامسونگ S25 FE")
+    from datetime import datetime
+    from torob import clock
+    clock.set_now(datetime(2026, 10, 22, 12, 0))   # midday: after ~21:00 most shops are closed and a question is right
+    try:
+        s = SessionState()
+        events, _ = turn(s, text="گوشی سامسونگ S25 FE")
+    finally:
+        clock.set_now(None)
     kinds = [e for e, _ in events]
     assert "question" not in kinds and "shop_cards" in kinds
     assert len(dict(events)["product_cards"]["items"]) == 1 and s.selected_product_id
