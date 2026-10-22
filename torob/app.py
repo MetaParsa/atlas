@@ -71,8 +71,12 @@ BUSY_TTL_S = 60
 
 
 def client_ip(request: Request) -> str:
+    """Behind the host's proxy (TRUST_PROXY=1) the last X-Forwarded-For hop is the one the proxy added; the first
+    entries are client-supplied and spoofable. Without a trusted proxy, use the connection address."""
     fwd = request.headers.get("x-forwarded-for")
-    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+    if fwd and os.environ.get("TRUST_PROXY") == "1":
+        return fwd.split(",")[-1].strip()
+    return request.client.host if request.client else "?"
 
 
 def is_https(request: Request) -> bool:
@@ -119,7 +123,8 @@ def index():
 def session_state(sid: str | None = Cookie(default=None, max_length=64)) -> dict:
     """What the strip needs on page load (no turn, no LLM)."""
     _, state = appdb().load(sid)
-    return {"conditions": conditions_event(state), "has_results": state.last_block_kind != "none"}
+    return {"conditions": conditions_event(state), "has_results": state.last_block_kind != "none",
+            "plan": state.plan}
 
 
 @app.post("/api/reset")

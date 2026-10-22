@@ -62,6 +62,7 @@ def alternative(product_id: str, cond: Conditions, failed_shop: dict, reason: st
                 text += f"، {res.relaxed['label']}"
             label = f"از {card['name']} بپرسم تا رسیدنم نگهش داره؟" if hold else f"به {card['name']} زنگ بزنم؟"
             return {"kind": "shop", "reason": why, "text": text, "shop": card, "relaxed": res.relaxed,
+                    "simulated": reason != "closed",   # «جواب نداد/نداشت» comes from the simulated call
                     "chip": call_chip(o.shop["shop_id"], product_id, label, hold=hold)}
     similar = similar_product(product_id, cond, failed_shop)
     if similar:
@@ -69,7 +70,7 @@ def alternative(product_id: str, cond: Conditions, failed_shop: dict, reason: st
         over = ""
         if cond.budget_max and similar["price_min"] > cond.budget_max:
             over = f"، {format_price_short(similar['price_min'] - cond.budget_max)} بالاتر از بودجه"
-        return {"kind": "product", "reason": why, "product": similar,
+        return {"kind": "product", "reason": why, "product": similar, "simulated": reason != "closed",
                 "text": (f"{why} → «{similar['title']}» {similar['where_text']}، قیمت ثبت‌شده از "
                          f"{format_toman(similar['price_min'])}" + (f" ({delta})" if delta else "") + over),
                 "chip": Chip(label="فروشنده‌هاش", kind="direct_call", tool="show_shops",

@@ -41,7 +41,9 @@ def test_simulated_style_exists_and_is_used():
     css = (WEB / "app.css").read_text(encoding="utf-8")
     js = (WEB / "app.js").read_text(encoding="utf-8")
     assert ".sim {" in css and "dashed" in css
-    assert js.count('"شبیه‌سازی"') >= 3          # call block, updated shop card, plan box all carry the tag
+    assert js.count("simTag()") >= 2                       # call header and simulated alternatives carry the tag
+    assert 'card.classList.add("sim")' not in js            # dataset rows of a shop card are never restyled
+    assert 'class: "simbox sim"' in js                      # simulated facts get their own row
 
 
 def test_state_and_reset(client):

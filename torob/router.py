@@ -384,7 +384,8 @@ def _offer_alternative(state: SessionState, em: Emitter, failed_shop: dict, reas
     alt = followup.alternative(state.selected_product_id, state.conditions, failed_shop, reason,
                                _excluded(state), clock.now())
     if alt is None:
-        yield say(state, em, f"چون {failed_shop['name']} {followup.REASONS[reason]}، گزینه‌ی دیگه‌ای با این شرایط پیدا نکردم.")
+        sim = " (شبیه‌سازی)" if reason != "closed" else ""
+        yield say(state, em, f"چون {failed_shop['name']} {followup.REASONS[reason]}{sim}، گزینه‌ی دیگه‌ای با این شرایط پیدا نکردم.")
         return
     if alt["kind"] == "shop" and alt["shop"]["shop_id"] not in state.call_ok_ids:
         state.call_ok_ids.append(alt["shop"]["shop_id"])
