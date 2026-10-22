@@ -38,9 +38,9 @@ bdi { unicode-bidi: isolate; }
 .top { position: sticky; top: 0; z-index: 6; background: var(--card); border-bottom: 1px solid var(--line); }
 .bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
 .logo { width: 34px; height: 34px; flex: none; }
-.hero-logo { display: block; width: 76px; height: 76px; margin: 0 auto 10px; animation: bob 3s ease-in-out infinite; }
+.hero-radish { display: block; width: 96px; height: 96px; margin: 0 auto 6px; image-rendering: pixelated; animation: bob 3s ease-in-out infinite; }
 @keyframes bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
-@media (prefers-reduced-motion: reduce) { .hero-logo { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hero-radish, .status.busy .rmini { animation: none; } }
 .brand { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
 .brand strong { font-size: 15px; font-weight: 800; }
 .brand span { font-size: 11px; color: var(--muted); }
@@ -71,9 +71,13 @@ main { flex: 1; padding: 14px 12px; display: flex; flex-direction: column; gap: 
 .bubble.agent { align-self: flex-end; background: var(--card); border: 1px solid var(--line); border-start-end-radius: 6px; box-shadow: var(--shadow); }
 .status { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
           background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; text-align: center; }
-.status.busy::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line);
-                       border-top-color: var(--red); animation: spin .8s linear infinite; flex: none; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.rmini { display: none; width: 20px; height: 20px; image-rendering: pixelated; flex: none; }
+.status.busy .rmini { display: block; animation: hop .6s ease-in-out infinite alternate; }
+@keyframes hop { to { transform: translateY(-3px); } }
+/* the assistant speaks as Torob's radish */
+.arow { align-self: flex-end; display: flex; align-items: flex-end; gap: 6px; max-width: 92%; }
+.arow .bubble { max-width: none; }
+.avatar-r { width: 28px; height: 28px; flex: none; image-rendering: pixelated; background: var(--card); border: 1px solid var(--line); border-radius: 50%; padding: 2px; }
 .error { align-self: stretch; color: var(--bad); background: var(--bad-soft); border-radius: var(--r-s); padding: 8px 12px; font-size: 13px; }
 .note { font-size: 13px; color: var(--warn); }
 .junk { font-size: 12px; color: var(--faint); text-align: center; }

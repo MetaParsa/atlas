@@ -12,6 +12,8 @@ const toLatin = (s) => String(s).replace(/[۰-۹]/g, (d) => FA.indexOf(d)).repla
 const TIMEOUT_MS = 90_000;
 let cond = null, busy = false, turn = null, hasResults = false;
 const callNames = {};
+const RADISH = "/static/radish.gif";   // Torob's radish mascot is the assistant's face
+const agentRow = (bubble) => el("div", { class: "arow" }, bubble, el("img", { class: "avatar-r", src: RADISH, alt: "" }));
 
 function el(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
@@ -139,15 +141,18 @@ function refine(patch) { if (!busy) post("/api/refine", { conditions: patch }); 
 
 const handlers = {
   status(d) {
-    if (!turn.status) { turn.status = el("div", { class: "status" }); stream.append(turn.status); }
-    turn.status.textContent = d.text;
+    if (!turn.status) {
+      turn.status = el("div", { class: "status" }, el("img", { class: "rmini", src: RADISH, alt: "" }), el("span"));
+      stream.append(turn.status);
+    }
+    turn.status.lastChild.textContent = d.text;
     turn.status.classList.toggle("busy", !d.done);
   },
-  message(d) { if (d.text) stream.append(el("div", { class: "bubble agent", text: d.text })); },
+  message(d) { if (d.text) stream.append(agentRow(el("div", { class: "bubble agent", text: d.text }))); },
   error(d) { stream.append(el("div", { class: "error", text: d.text })); },
   conditions(d) { setConditions(d); },
   question(d) {
-    stream.append(el("div", { class: "question" }, el("div", { class: "bubble agent", text: d.text }),
+    stream.append(el("div", { class: "question" }, agentRow(el("div", { class: "bubble agent", text: d.text })),
       el("div", { class: "chips" }, (d.chips || []).map((c) => chipButton(c)))));
   },
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); },
