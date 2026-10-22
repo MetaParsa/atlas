@@ -28,7 +28,8 @@ For EACH product decide whether a sensible salesperson would show it for this re
   asked for that kind of item);
 - no: it clearly misses an explicit requirement: a named brand or model or generation, wireless vs wired, a size or
   capacity, or a stated form ("small, for travel" rules out large home or party speakers);
-- yes otherwise. Price and budget are NOT your concern (the app filters them with nearby prices). Soft wishes
+- yes otherwise. Do not filter on the budget (the app does that with nearby prices), but do use price as evidence
+  of what a product is (a speaker costing ten times the portable ones is a large home or party speaker). Soft wishes
   ("good", "cheap", "for the gym") never make it a no.
 Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
 or its price is a small fraction of other listings of the same model in this list.
