@@ -461,8 +461,6 @@ def _relevance_judge(state: SessionState, em: Emitter):
         return None
     said = [h["content"] for h in state.history if h.get("role") == "user"][-2:]
     want = " / ".join(said) or (state.need.named_product or state.need.product_type if state.need else "")
-    if want and state.conditions.budget_max:   # a budget set on the strip counts like one typed in the chat
-        want += f" (budget: up to {state.conditions.budget_max:,} toman)"
     return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
 
 

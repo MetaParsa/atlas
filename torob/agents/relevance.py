@@ -1,9 +1,10 @@
 """Which found products are actually what the shopper asked for — judged by the model, not by word lists.
 
 Full-text search finds everything that *mentions* the request: «کاور سیلیکونی هایلو X1 Neo» mentions earbuds, a phone
-battery mentions the phone. One small call shows the model the shopper's own words (and budget) and the top candidates
-(title, category, typical price) and asks, product by product, what a sensible salesperson would show: the right kind
-of product, meeting the explicit requirements, with soft wishes («خوب», «برای باشگاه») left to the ranking. It also
+battery mentions the phone. One small call shows the model the shopper's own words and the top candidates (title,
+category, typical price) and asks, product by product, what a sensible salesperson would show: the right kind of
+product, meeting the explicit requirements, with soft wishes («خوب», «برای باشگاه») left to the ranking and the budget
+left to the advisor (it filters with nearby prices and a 10% slack; a second, model-made budget cut conflicted). It also
 flags likely copies («طرح», or a price far below the genuine product). Without a model, or with an unusable answer,
 the search's own rules stand (None = no judgement).
 
@@ -26,9 +27,9 @@ For EACH product decide whether a sensible salesperson would show it for this re
 - no: a different kind of product, or an accessory / spare part / refill / case / charger / cable (unless the shopper
   asked for that kind of item);
 - no: it clearly misses an explicit requirement: a named brand or model or generation, wireless vs wired, a size or
-  capacity, a stated form ("small, for travel" rules out large home or party speakers), or the budget (far above it,
-  or so far below it that it is clearly a different class, e.g. a 2-million basic phone for a 20-million budget);
-- yes otherwise. Soft wishes ("good", "cheap", "for the gym") never make it a no.
+  capacity, or a stated form ("small, for travel" rules out large home or party speakers);
+- yes otherwise. Price and budget are NOT your concern (the app filters them with nearby prices). Soft wishes
+  ("good", "cheap", "for the gym") never make it a no.
 Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
 or its price is a small fraction of other listings of the same model in this list.
 
