@@ -159,6 +159,12 @@ def session_state(sid: str | None = Cookie(default=None, max_length=64)) -> dict
             "plan": state.plan}
 
 
+@app.get("/api/popular")
+def popular() -> dict:
+    """The start screen's suggestions: the searches people typed most (only ones that found products)."""
+    return {"searches": appdb().popular_searches()}
+
+
 @app.post("/api/reset")
 def reset(sid: str | None = Cookie(default=None, max_length=64)) -> JSONResponse:
     """«جدید»: forget this session's search (a new session id)."""
@@ -238,6 +244,7 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
             return JSONResponse({"error": "صبر کن جواب قبلی تموم بشه."}, status_code=409)
         _busy[sid] = time.monotonic()
     em = Emitter(sid, sink=adb.log_event)
+    first_search = text is not None and state.last_block_kind == "none"
 
     delay = float(os.environ.get("CALL_LINE_DELAY", "0.7"))
 
@@ -250,6 +257,8 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                     em.paused += delay  # …and the pacing isn't counted as response time on /admin
         finally:
             adb.save(sid, state)   # also when the client disconnects mid-stream
+            if first_search and any(e == "product_cards" and d.get("items") for e, d in em.events):
+                adb.record_search(text)
             with _busy_lock:
                 _busy.pop(sid, None)
 

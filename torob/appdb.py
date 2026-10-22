@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -16,8 +17,16 @@ CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ts REAL, event TEXT, data TEXT);
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+CREATE TABLE IF NOT EXISTS searches(text TEXT PRIMARY KEY, n INTEGER NOT NULL, last REAL NOT NULL);
 """
 KEEP_DAYS = 7
+_PRIVATE = re.compile(r"[0-9۰-۹٠-٩]{5,}|@|https?:|www\.", re.I)   # phone/card numbers, emails, links never become suggestions
+
+
+def searchable(text: str | None) -> str | None:
+    """The text as the start screen may show it to other people, or None if it shouldn't be shown."""
+    t = " ".join((text or "").split())
+    return t if 2 <= len(t) <= 40 and not _PRIVATE.search(t) else None
 
 
 class AppDB:
@@ -85,8 +94,22 @@ class AppDB:
                 "errors": [{"at": time.strftime("%m-%d %H:%M", time.localtime(ts)), "text": d.get("text"),
                             "detail": d.get("detail")} for ts, d in errors]}
 
+    def record_search(self, text: str | None) -> None:
+        """A first message that found products: counted for the start screen's popular searches."""
+        t = searchable(text)
+        if t:
+            with self._lock:
+                self._con.execute("INSERT INTO searches(text, n, last) VALUES (?, 1, ?) "
+                                  "ON CONFLICT(text) DO UPDATE SET n = n + 1, last = excluded.last", (t, time.time()))
+
+    def popular_searches(self, limit: int = 3) -> list[str]:
+        with self._lock:
+            rows = self._con.execute("SELECT text FROM searches ORDER BY n DESC, last DESC LIMIT ?", (limit,)).fetchall()
+        return [r[0] for r in rows]
+
     def purge(self, keep_days: int = KEEP_DAYS) -> None:
         cutoff = time.time() - keep_days * 86400
         with self._lock:
             self._con.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
             self._con.execute("DELETE FROM sessions WHERE updated < ?", (cutoff,))
+            self._con.execute("DELETE FROM searches WHERE last < ?", (cutoff,))

@@ -171,8 +171,7 @@ async function post(url, body) {
   return true;
 }
 
-// --- start screen suggestions: recent searches (kept only in this browser), or examples the first time ------------
-const EXAMPLES = ["هندزفری بلوتوثی تا ۳ میلیون", "شارژر اصل آیفون", "گوشی سامسونگ S25 FE قسطی"];
+// --- start screen suggestions: your recent searches (kept only in this browser), else what people search most -----
 const RECENT_KEY = "torob.recent", RECENT_MAX = 5;
 function recentSearches() {
   try {
@@ -185,18 +184,23 @@ function remember(text) {
   const t = text.trim().replace(/\s+/g, " ").slice(0, 120);
   saveRecent([t, ...recentSearches().filter((s) => s !== t)].slice(0, RECENT_MAX));
 }
-function renderSuggestions() {
+async function renderSuggestions() {
   const box = $("#suggest");
   if (!box) return;
   const recent = recentSearches();
-  box.replaceChildren(...(recent.length ? [
-    el("div", { class: "suggest-h" }, el("span", { text: "جست‌وجوهای اخیرت" }),
-      el("button", { type: "button", class: "ghost", text: "پاک کردن", onclick: () => { saveRecent([]); renderSuggestions(); } })),
-    el("div", { class: "recent" }, recent.map((t) => el("button", { type: "button", onclick: () => say(t) }, icon("clock"), el("span", { text: t })))),
-  ] : [
-    el("div", { class: "suggest-h center" }, el("span", { text: "مثلاً بگو" })),
-    el("div", { class: "chips" }, EXAMPLES.map((t) => el("button", { type: "button", class: "chip", text: t, onclick: () => say(t) }))),
-  ]));
+  if (recent.length) {
+    box.replaceChildren(
+      el("div", { class: "suggest-h" }, el("span", { text: "جست‌وجوهای اخیرت" }),
+        el("button", { type: "button", class: "ghost", text: "پاک کردن", onclick: () => { saveRecent([]); renderSuggestions(); } })),
+      el("div", { class: "recent" }, recent.map((t) => el("button", { type: "button", onclick: () => say(t) }, icon("clock"), el("span", { text: t })))));
+    return;
+  }
+  box.replaceChildren();
+  let popular = [];
+  try { popular = (await (await fetch("/api/popular")).json()).searches || []; } catch (_) {}
+  if (popular.length && !recentSearches().length) {   // exactly what people typed, no heading
+    box.replaceChildren(el("div", { class: "chips" }, popular.map((t) => el("button", { type: "button", class: "chip", text: t, onclick: () => say(t) }))));
+  }
 }
 
 function showError(text) { leaveStart(); stream.append(el("div", { class: "error", text })); oops(); }

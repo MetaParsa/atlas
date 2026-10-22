@@ -125,3 +125,25 @@ def test_radish_sprites_match_their_generator(client, tmp_path, monkeypatch):
         assert s["loop"] and all(0 <= i < len(frames) for i in s["in"] + s["loop"])
     assert "/static/radish-sprites.js?v=" in client.get("/").text
     assert client.get("/static/radish-sheet.png").status_code == 200
+
+
+def test_searchable_keeps_private_text_off_the_start_screen():
+    from torob.appdb import searchable
+    assert searchable("  هندزفری   بلوتوثی ") == "هندزفری بلوتوثی"
+    for bad in ["", "a", "شماره‌م ۰۹۱۲۳۴۵۶۷۸۹", "x@y.com", "https://t.me/a", "خ" * 41]:
+        assert searchable(bad) is None
+
+
+@needs_db
+def test_popular_searches_are_first_searches_that_found_products(client):
+    def search(text, fresh=True):
+        if fresh:
+            client.cookies.clear()                   # a new visitor (no session yet)
+        assert client.post("/api/chat", json={"text": text}).status_code == 200
+    assert client.get("/api/popular").json() == {"searches": []}
+    search("شارژر آیفون")
+    search("شارژر آیفون")
+    search("ارزون‌تر", fresh=False)                  # a follow-up in the same session is not a new search
+    search("هندزفری بلوتوثی")
+    search("قققزززخخخ")                              # found nothing: not suggested to others
+    assert client.get("/api/popular").json() == {"searches": ["شارژر آیفون", "هندزفری بلوتوثی"]}
