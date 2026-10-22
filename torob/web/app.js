@@ -128,6 +128,13 @@ function setBusy(on) {
   document.body.classList.toggle("busy-all", on);
   $("#send").disabled = on;
   $("#attach").disabled = on;
+  syncDock();
+}
+// The docked radish acts out the agent's work at the bottom of the chat; while the user scrolls back up through
+// results it steps aside, so it never covers a card they are reading.
+function syncDock() {
+  const away = document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 120;
+  $("#app").classList.toggle("reading", away && !busy);
 }
 
 async function post(url, body) {
@@ -647,6 +654,7 @@ $("#reset").addEventListener("click", () => {
 window.addEventListener("scroll", () => {   // hysteresis: hiding the location row shifts the page, so no flicker at the edge
   const top = $(".top"), y = window.scrollY;
   if (y > 160) top.classList.add("compact"); else if (y < 40) top.classList.remove("compact");
+  syncDock();
 }, { passive: true });
 
 // A reload rebuilds this session's chat from the server's log, with the same handlers as a live turn.

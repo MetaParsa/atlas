@@ -119,6 +119,7 @@ class SessionState(BaseModel):
     calls: dict[str, dict] = {}          # call_id -> CallResult (S6)
     plan: dict | None = None             # «برنامه‌ی خرید» card (S6)
     history: list[dict] = []             # last turns: {"role", "content"}
+    just_changed: list[str] = []         # the conditions the user set most recently: relaxed only as a last resort
 
     def remember(self, role: str, content: str, keep: int = 10) -> None:
         self.history = (self.history + [{"role": role, "content": content}])[-keep:]

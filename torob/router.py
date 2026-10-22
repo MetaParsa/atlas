@@ -280,6 +280,7 @@ def _chip_set_conditions(state: SessionState, em: Emitter, args: SetConditionsAr
             changed += apply_patch(state, {k: v})
     yield em.emit("conditions", conditions_event(state))
     if changed:
+        state.just_changed = _condition_fields(changed)
         yield from rerun_latest(state, em)
 
 
@@ -333,7 +334,7 @@ def _select_product(state: SessionState, product_id: str | None) -> None:
 
 def _find_offer(state: SessionState, shop_id: str):
     """The shop's current ShopOffer for the selected product, planned against the current conditions."""
-    res = shops_agent.find_shops(state.selected_product_id, state.conditions)
+    res = shops_agent.find_shops(state.selected_product_id, state.conditions, keep=frozenset(state.just_changed))
     for o in res.items + res.more:
         if o.shop["shop_id"] == shop_id:
             return o, res
@@ -517,7 +518,7 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
         return
     yield em.emit("conditions", conditions_event(state))
     yield em.emit("status", {"text": "دارم فروشنده‌های نزدیک رو مقایسه می‌کنم…", "done": False})
-    res = shops_agent.find_shops(state.selected_product_id, state.conditions)
+    res = shops_agent.find_shops(state.selected_product_id, state.conditions, keep=frozenset(state.just_changed))
     now = clock.now()
     cards = [shops_agent.card(o, res.product, state.conditions, now) for o in res.items]
     more = [shops_agent.card(o, res.product, state.conditions, now) for o in res.more[:20]]
@@ -653,6 +654,11 @@ def _recheck_plan(state: SessionState, em: Emitter) -> Iterator[str]:
     yield em.emit("plan", {"replace": True, **state.plan})
 
 
+def _condition_fields(changed: list[str]) -> list[str]:
+    """Condition keys as the shop finder's relaxation names them (budget_min and budget_max are one «budget»)."""
+    return sorted({"budget_max" if k in ("budget_min", "budget_max") else k for k in changed})
+
+
 def rerun_latest(state: SessionState, em: Emitter) -> Iterator[str]:
     """After a condition change, re-run the block the user is looking at (R15)."""
     if state.last_block_kind == "shops" and state.selected_product_id:
@@ -684,7 +690,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
     patch = dict(out.conditions_patch)
     if out.need and out.need.budget_max and "budget_max" not in patch:
         patch["budget_max"] = out.need.budget_max
-    if apply_patch(state, patch):
+    if changed := apply_patch(state, patch):
+        state.just_changed = _condition_fields(changed)
         yield em.emit("conditions", conditions_event(state))
     if out.intent in ("need", "named_product") and out.need:
         state.need = out.need

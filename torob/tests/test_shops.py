@@ -161,3 +161,14 @@ def test_refine_endpoint(tmp_path, monkeypatch):
     c.post("/api/chat", json={"text": "شارژر اصل آیفون"})
     r = c.post("/api/refine", json={"conditions": {"budget_max": 2_000_000}})
     assert r.status_code == 200 and "event: product_cards" in r.text
+
+
+
+def test_distance_gives_way_first_and_the_users_latest_choice_last():
+    from torob.agents.shops import _relax_options
+    from torob.models import Conditions
+    c = Conditions(radius_km=3, payment="credit", budget_max=3_000_000)
+    order = [f for f, _, _ in _relax_options(c)]
+    assert order[0] == "radius_km" and order[-1] == "payment"      # «only instalments» stays instalments, farther away
+    kept = [f for f, _, _ in _relax_options(c, frozenset({"radius_km"}))]
+    assert kept[-1] == "radius_km" and kept[0] != "radius_km"       # a radius the user just narrowed is kept longest

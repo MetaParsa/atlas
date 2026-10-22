@@ -75,7 +75,9 @@ bdi { unicode-bidi: isolate; }
 /* the radish mascot: a 25x27 pixel canvas drawn at whole-pixel scales (5x on the start screen, 2x on the composer) */
 .radish { display: block; image-rendering: pixelated; }
 .hero-radish { width: 125px; height: 135px; margin: -24px auto 0; }
-.dock { position: absolute; bottom: calc(100% - 6px); inset-inline-end: 18px; width: 50px; height: 54px; pointer-events: none; }
+.dock { position: absolute; bottom: calc(100% - 6px); inset-inline-end: 18px; width: 50px; height: 54px; pointer-events: none;
+        transition: opacity .25s ease, transform .25s ease; }
+#app.reading .dock { opacity: 0; transform: translateY(10px); }   /* scrolled up to read: out of the way */
 
 /* stream: iMessage bubbles */
 main { flex: 1; padding: 16px 16px 64px; display: flex; flex-direction: column; gap: var(--gap); }

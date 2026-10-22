@@ -23,7 +23,7 @@ TOP_N = 3
 CATEGORY_ONLY_MAX = 10
 WEEKDAYS = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
 W = {"price": 0.40, "fresh": 0.25, "travel": 0.15, "slack": 0.10, "complete": 0.10}   # R13
-BADGE_LABELS = {"cheapest": "ارزان‌ترین", "nearest": "نزدیک‌ترین", "open_latest": "دیرتر باز",
+BADGE_LABELS = {"open_known": "تا برسی بازه", "cheapest": "ارزان‌ترین", "nearest": "نزدیک‌ترین", "open_latest": "دیرتر باز",
                 "freshest_price": "قیمت تازه‌تر", "credit": "قسطی"}
 
 
@@ -209,6 +209,11 @@ def _badges(compared: list[ShopOffer], shown: list[ShopOffer]) -> None:
     for o in shown:
         if o.payments:
             o.badges.append("credit")
+    # Known-open shops rank above unknown-hours ones (A10); when that's why a card is ahead, say it first.
+    if any(o.open_state == "unknown" for o in shown):
+        for o in shown:
+            if o.open_state in ("yes", "tight"):
+                o.badges.insert(0, "open_known")
 
 
 @lru_cache(maxsize=512)
@@ -262,28 +267,27 @@ def _same_building(offers: list[ShopOffer]) -> None:
         o.same_building_others = groups.get(gid, 1) - 1 if gid else 0
 
 
-RELAX_ORDER = ["payment", "fast_delivery", "budget_max", "open", "radius_km"]
-
-
-def _relax_options(c: Conditions) -> list[tuple[str, dict, str]]:
-    """Candidate single-condition relaxations, in order, with a human label."""
+def _relax_options(c: Conditions, keep: frozenset[str] = frozenset()) -> list[tuple[str, dict, str]]:
+    """Candidate single-condition relaxations, in order, with a human label. Distance gives way first (a farther shop
+    that meets every term beats a nearby one that doesn't: «only instalments» stays instalments); conditions the user
+    has just set (`keep`) give way last."""
     opts = []
-    if c.payment == "credit_in_person":
-        opts.append(("payment", {"payment": "credit"}, "قسطی (حضوری بودنش ثبت نشده) هم حساب شد"))
-    if c.payment != "any":
-        opts.append(("payment", {"payment": "any"}, "بدون شرط قسطی"))
-    if c.fast_delivery:
-        opts.append(("fast_delivery", {"fast_delivery": False}, "بدون شرط ارسال فوری"))
-    if c.budget_max:
-        opts.append(("budget_max", {"budget_max": None}, "بدون محدودیت بودجه"))
-    if c.open != "any":
-        opts.append(("open", {"open": "any"}, "بدون شرط باز بودن"))
     if c.radius_km:
         for r in (c.radius_km * 2, c.radius_km * 4):
             if r <= 50:
                 opts.append(("radius_km", {"radius_km": r}, f"تا {km_label(r)}"))
         opts.append(("radius_km", {"radius_km": None}, "کل تهران"))
-    return opts
+    if c.open != "any":
+        opts.append(("open", {"open": "any"}, "بدون شرط باز بودن"))
+    if c.budget_max:
+        opts.append(("budget_max", {"budget_max": None}, "بدون محدودیت بودجه"))
+    if c.fast_delivery:
+        opts.append(("fast_delivery", {"fast_delivery": False}, "بدون شرط ارسال فوری"))
+    if c.payment == "credit_in_person":
+        opts.append(("payment", {"payment": "credit"}, "قسطی (حضوری بودنش ثبت نشده) هم حساب شد"))
+    if c.payment != "any":
+        opts.append(("payment", {"payment": "any"}, "بدون شرط قسطی"))
+    return sorted(opts, key=lambda o: o[0] in keep)   # stable: the user's latest choice is relaxed only as a last resort
 
 
 def km_label(km: float) -> str:
@@ -294,7 +298,7 @@ def km_label(km: float) -> str:
     return to_fa_digits(text).replace(".", "٫") + " کیلومتر"
 
 
-def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
+def find_shops(product_id: str, cond: Conditions, keep: frozenset[str] = frozenset()) -> ShopsResult:
     now = clock.now()
     product, offers, suspicious_only = load_offers(product_id)
     for o in offers:
@@ -310,7 +314,7 @@ def find_shops(product_id: str, cond: Conditions) -> ShopsResult:
               "closed_at_arrival": sum(1 for o in terms_ok if not _passes_open(o, cond, now)),
               "suspicious_hidden": len(suspicious_only)}
     if not passing:
-        for fld, patch, label in _relax_options(cond):
+        for fld, patch, label in _relax_options(cond, keep):
             trial = cond.model_copy(update=patch)
             got = [o for o in offers if _passes(o, trial, now)]
             if got:
