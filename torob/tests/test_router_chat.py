@@ -87,7 +87,7 @@ def test_chat_endpoint_streams_and_persists(tmp_path, monkeypatch):
     events = parse_sse(r.text)
     assert events[-1][0] == "done" and any(e == "product_cards" for e, _ in events)
     sid = r.cookies["sid"]
-    assert [e["event"] for e in _adb.events(sid)] == [e for e, _ in events]
+    assert [e["event"] for e in _adb.events(sid)] == ["user"] + [e for e, _ in events]   # the log also keeps what the user said
     # second turn reuses the session (cookie) and its conditions
     r2 = c.post("/api/chat", json={"text": "تا ۲ میلیون"})
     assert _adb.load(sid)[1].conditions.budget_max == 2_000_000 and r2.cookies.get("sid", sid) == sid

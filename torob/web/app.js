@@ -11,6 +11,7 @@ const fa = (v) => String(v).replace(/\d/g, (d) => FA[d]);
 const toLatin = (s) => String(s).replace(/[۰-۹]/g, (d) => FA.indexOf(d)).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[٫,]/g, ".");
 const TIMEOUT_MS = 90_000;
 let cond = null, busy = false, turn = null, hasResults = false;
+let replaying = false;                        // rebuilding the chat after a reload: no animation, no scrolling
 const callNames = {};
 const RADISH = "/static/radish.gif";   // Torob's radish mascot is the assistant's face
 const agentRow = (bubble) => el("div", { class: "arow" }, bubble, el("img", { class: "avatar-r", src: RADISH, alt: "" }));
@@ -60,7 +61,7 @@ function icon(name, cls) {
   }
   return svg;
 }
-const scrollEnd = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+const scrollEnd = () => { if (!replaying) window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); };
 
 // --- the radish: one animated mascot that acts out what the assistant is doing ------------------------------------
 // Frames come from radish-sheet.png (built by torob/tools/radish_sprites.py). A switch plays the old state's props
@@ -110,6 +111,7 @@ const Radish = (() => {
   return {
     attach(c) { c.width = S.w; c.height = S.h; canvases.add(c); draw(frame); },
     set(state) {
+      if (replaying) return;
       lastSet = performance.now();
       if (still) { cur = state; draw(S.states[state].loop[0]); return; }
       if ((queue.at(-1) ?? cur) === state) return;
@@ -220,7 +222,7 @@ function chip(c, bubble = c.label) {
   if (busy) return;
   if (c.kind === "direct_call") {
     if (bubble) { leaveStart(); stream.append(el("div", { class: "bubble user", text: bubble })); }
-    post("/api/chat", { chip: c });
+    post("/api/chat", { chip: c, bubble: bubble || null });
   } else say(c.value || c.label);
 }
 function chipButton(c, cls = "chip", bubble, ic) {
@@ -271,7 +273,8 @@ const handlers = {
     Radish.set("happy");
   },
   card_update(d) { updateShopCard(d); },
-  plan(d) { renderPlan(d); Radish.set("map"); },
+  plan(d) { renderPlan(d, replaying); Radish.set("map"); },
+  user(d) { stream.append(el("div", { class: "bubble user", text: d.text })); },   // only in a replayed history
   alternative(d) {
     stream.append(el("div", { class: "card alt" },
       el("div", { class: d.simulated ? "simbox sim" : "" }, el("span", { text: d.text }), d.simulated ? simTag() : null),
@@ -586,13 +589,33 @@ window.addEventListener("scroll", () => {   // hysteresis: hiding the location r
   if (y > 160) top.classList.add("compact"); else if (y < 40) top.classList.remove("compact");
 }, { passive: true });
 
+// A reload rebuilds this session's chat from the server's log, with the same handlers as a live turn.
+async function restoreHistory() {
+  let evs = [];
+  try { evs = (await (await fetch("/api/history")).json()).events || []; } catch (_) {}
+  if (!evs.length) return false;
+  leaveStart();
+  replaying = true;
+  turn = { status: null, sawDone: false, block: null, failed: false };
+  for (const { event, data } of evs) {
+    if (event === "user") turn = { status: null, sawDone: false, block: null, failed: false };
+    try { (handlers[event] || (() => {}))(data); } catch (e) { console.error(event, e); }
+    turn.status?.classList.remove("busy");
+  }
+  replaying = false;
+  turn = null;
+  window.scrollTo({ top: document.body.scrollHeight });
+  return true;
+}
+
 (async () => {
   try {
     const s = await (await fetch("/api/state")).json();
     hasResults = !!s.has_results;
+    const restored = hasResults && await restoreHistory();
     setConditions(s.conditions);
     if (s.plan) renderPlan(s.plan, true);     // a reload keeps the shopping plan
-    if (hasResults) $("#start .resume")?.removeAttribute("hidden");
+    if (hasResults && !restored) $("#start .resume")?.removeAttribute("hidden");
   } catch (_) {}
   measureSticky();
 })();

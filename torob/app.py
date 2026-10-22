@@ -117,9 +117,11 @@ def areas() -> list[dict]:
 class ChatIn(BaseModel):
     text: str | None = Field(None, max_length=MAX_TEXT)
     chip: Chip | None = None
+    bubble: str | None = Field(None, max_length=200)   # what the page showed as the user's message for a tapped chip
 
 
 WEB = Path(__file__).parent / "web"
+HISTORY_MAX = 400   # events replayed on reload (a long session keeps its latest part)
 
 
 class _Static(StaticFiles):
@@ -165,6 +167,14 @@ def popular() -> dict:
     return {"searches": appdb().popular_searches()}
 
 
+@app.get("/api/history")
+def history(sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+    """This session's conversation (only the caller's own cookie), so a reload shows the chat again."""
+    if not sid:
+        return {"events": []}
+    return {"events": [{"event": e["event"], "data": e["data"]} for e in appdb().events(sid)[-HISTORY_MAX:]]}
+
+
 @app.post("/api/reset")
 def reset(sid: str | None = Cookie(default=None, max_length=64)) -> JSONResponse:
     """«جدید»: forget this session's search (a new session id)."""
@@ -192,6 +202,7 @@ def admin() -> HTMLResponse:
                     ("محصول", fmt(int(m.get("rows_products", 0) or 0))), ("پیشنهاد (offer)", fmt(int(m.get("rows_offers", 0) or 0))),
                     ("قیمت مشکوک کنار گذاشته", fmt(int(m.get("flagged_offers", 0) or 0)))]),
         ("هوش مصنوعی", [("LLM فعال", "بله" if c.enabled else "خیر (قواعد + FakeLLM؛ بدون هزینه)"),
+                        ("مدل", "، ".join(sorted(set(c.models.values())))),
                         ("توکن مصرف‌شده امروز", fmt(c.guard.used_today())), ("سقف روزانه", fmt(c.guard.daily_tokens)),
                         ("سقف هر نشست", fmt(c.guard.session_tokens)),
                         ("آخرین فراخوانی‌ها", "، ".join(f"{x['role']}:{x['tokens']}" for x in c.log[-5:]) or "—")]),
@@ -223,7 +234,7 @@ class RefineIn(BaseModel):
 
 @app.post("/api/chat")
 def chat(body: ChatIn, request: Request, sid: str | None = Cookie(default=None, max_length=64)):
-    return _turn_response(request, sid, text=body.text, chip=body.chip)
+    return _turn_response(request, sid, text=body.text, chip=body.chip, bubble=body.bubble)
 
 
 @app.post("/api/refine")
@@ -233,7 +244,8 @@ def refine(body: RefineIn, request: Request, sid: str | None = Cookie(default=No
     return _turn_response(request, sid, chip=chip)
 
 
-def _turn_response(request: Request, sid: str | None, text: str | None = None, chip: Chip | None = None):
+def _turn_response(request: Request, sid: str | None, text: str | None = None, chip: Chip | None = None,
+                   bubble: str | None = None):
     if not chat_limit.allow(client_ip(request)):
         return JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
     adb = appdb()
@@ -244,6 +256,9 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
             return JSONResponse({"error": "صبر کن جواب قبلی تموم بشه."}, status_code=409)
         _busy[sid] = time.monotonic()
     em = Emitter(sid, sink=adb.log_event)
+    said = text if text is not None else bubble
+    if said and said.strip():
+        adb.log_event(sid, "user", {"text": said.strip()})   # the user's side of the chat, for /api/history
     first_search = text is not None and state.last_block_kind == "none"
 
     delay = float(os.environ.get("CALL_LINE_DELAY", "0.7"))

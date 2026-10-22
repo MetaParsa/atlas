@@ -147,3 +147,26 @@ def test_popular_searches_are_first_searches_that_found_products(client):
     search("هندزفری بلوتوثی")
     search("قققزززخخخ")                              # found nothing: not suggested to others
     assert client.get("/api/popular").json() == {"searches": ["شارژر آیفون", "هندزفری بلوتوثی"]}
+
+
+@needs_db
+def test_history_replays_only_this_sessions_chat(client):
+    assert client.get("/api/history").json() == {"events": []}            # a new visitor has no chat
+    client.post("/api/chat", json={"text": "شارژر آیفون"})
+    evs = client.get("/api/history").json()["events"]
+    assert evs[0] == {"event": "user", "data": {"text": "شارژر آیفون"}}
+    assert any(e["event"] == "product_cards" and e["data"]["items"] for e in evs)
+    pid = next(e for e in evs if e["event"] == "product_cards")["data"]["items"][0]["product_id"]
+    client.post("/api/chat", json={"chip": {"label": "فروشنده‌ها", "kind": "direct_call", "tool": "show_shops",
+                                            "args": {"product_id": pid}}, "bubble": "فروشنده‌های «شارژر»"})
+    users = [e["data"]["text"] for e in client.get("/api/history").json()["events"] if e["event"] == "user"]
+    assert users == ["شارژر آیفون", "فروشنده‌های «شارژر»"]                 # a tapped chip keeps its shown bubble
+    client.cookies.clear()
+    assert client.get("/api/history").json() == {"events": []}            # another visitor can't read it
+
+
+def test_default_llm_model_is_claude_haiku(monkeypatch):
+    from core.llm import from_env
+    for k in ("MODEL_ROUTER", "MODEL_CHAT", "MODEL_CALL"):
+        monkeypatch.delenv(k, raising=False)
+    assert set(from_env().models.values()) == {"anthropic/claude-haiku-5.5"}
