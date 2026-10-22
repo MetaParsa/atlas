@@ -2,10 +2,13 @@
 
 Full-text search finds everything that *mentions* the request: «کاور سیلیکونی هایلو X1 Neo» mentions earbuds, a phone
 battery mentions the phone. One small call shows the model the shopper's own words (and budget) and the top candidates
-(title, category, typical price) and asks what a sensible salesperson would show: the right kind of product, meeting
-the explicit requirements, with soft wishes («خوب», «برای باشگاه») left to the ranking. It also flags likely copies
-(«طرح», or a price far below the genuine product). Without a model, or with an unusable answer, the search's own rules
-stand (None = no judgement).
+(title, category, typical price) and asks, product by product, what a sensible salesperson would show: the right kind
+of product, meeting the explicit requirements, with soft wishes («خوب», «برای باشگاه») left to the ranking. It also
+flags likely copies («طرح», or a price far below the genuine product). Without a model, or with an unusable answer,
+the search's own rules stand (None = no judgement).
+
+A verdict per product, not one list of indices: on hard searches (wireless vs wired mouse, «AirPods Pro 2» vs Pro 3,
+a budget class) the list form kept 18 wrong products of 33, the per-product form none (live test, 2026-10-22).
 """
 
 from dataclasses import dataclass, field
@@ -18,28 +21,23 @@ PROMPT = """A shopper in Tehran asked: {want}
 Products found in the shop catalogue (index | title | category | typical price in toman):
 {rows}
 
-1. "keep": the indices a sensible salesperson would show for this request.
-   - Drop other kinds of product, and accessories, spare parts, refills, cases, chargers or cables, unless the shopper
-     asked for that kind of item.
-   - Drop products that clearly miss an explicit requirement: a named brand or model, a size or capacity, a stated form
-     ("small, for travel" rules out a large home speaker), or the budget (far above it, or so far below it that it is
-     clearly a different class, e.g. a 2-million basic phone for a 20-million budget).
-   - Do NOT drop for soft wishes such as "good", "cheap", "for the gym" or a use case. Keep every product of the right
-     kind that meets the explicit requirements, whatever its brand. Do not rank.
-2. "copies": among the kept indices, the ones that look like a copy or imitation of a brand-name product (the title says
-   طرح, کپی, های کپی or فیک, or the price is far below what the genuine product costs in Iran).
+For EACH product decide whether a sensible salesperson would show it for this request:
+- no: a different kind of product, or an accessory / spare part / refill / case / charger / cable (unless the shopper
+  asked for that kind of item);
+- no: it clearly misses an explicit requirement: a named brand or model or generation, wireless vs wired, a size or
+  capacity, a stated form ("small, for travel" rules out large home or party speakers), or the budget (far above it,
+  or so far below it that it is clearly a different class, e.g. a 2-million basic phone for a 20-million budget);
+- yes otherwise. Soft wishes ("good", "cheap", "for the gym") never make it a no.
+Also mark copy=true when it looks like a copy or imitation of a brand-name product (title says طرح / کپی / فیک, or the
+price is far below what the genuine product costs in Iran).
 
-Reply as JSON: {{"keep": [indices], "copies": [indices]}}"""
+Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false}}, ...]}} covering every index."""
 
 
 @dataclass
 class Judgement:
     kept: list
     copies: set[str] = field(default_factory=set)   # product_ids that look like copies
-
-
-def _ids(values) -> set[int]:
-    return {int(i) for i in values or [] if str(i).lstrip("-").isdigit()}
 
 
 def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
@@ -50,12 +48,13 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
     rows = "\n".join(f"{i} | {c.title} | {c.category} | {c.price_median or '?'}" for i, c in enumerate(items))
     try:
         res = llm.complete("judge", [{"role": "user", "content": PROMPT.format(want=want.strip(), rows=rows)}],
-                           session_id=session_id, max_tokens=400, json_mode=True)
-        out = res.json()
-        keep_idx, copy_idx = _ids(out.get("keep")), _ids(out.get("copies"))
+                           session_id=session_id, max_tokens=1500, json_mode=True)
+        verdicts = {int(v["i"]): v for v in res.json().get("items", []) if str(v.get("i", "")).isdigit()}
     except Exception:   # LLM off, budget spent, bad JSON: the rule-based result stands
         return None
-    kept = [c for i, c in enumerate(items) if i in keep_idx]
+    kept = [c for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True]
     if not kept:        # «nothing fits» is more likely a bad answer than a true one; don't empty the results
         return None
-    return Judgement(kept, {c.product_id for i, c in enumerate(items) if i in copy_idx and i in keep_idx})
+    copies = {c.product_id for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True
+              and verdicts[i].get("copy") is True}
+    return Judgement(kept, copies)

@@ -93,9 +93,10 @@ def test_relevance_judge_keeps_what_the_model_names_and_falls_back_cleanly():
     seen = []
     def script(role, msgs):
         seen.append((role, msgs[0]["content"]))
-        return {"keep": [0, 2, 99], "copies": [2, 1]}   # a copy that wasn't kept is ignored
+        return {"items": [{"i": 0, "show": True}, {"i": 1, "show": False, "copy": True}, {"i": 2, "show": True, "copy": True},
+                          {"i": 99, "show": True}]}   # a copy that is not shown, and an unknown index, are ignored
     judged = relevance.keep(LLMClient([], {}, fake=FakeLLM(script)), "هندزفری برای باشگاه", cands, "s")
     assert judged.kept == [cands[0], cands[2]] and judged.copies == {"p3"} and seen[0][0] == "judge"
     assert "1 | کاور سیلیکونی هایلو | کیف و کاور | 300000" in seen[0][1]
-    assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: {"keep": []})), "x", cands, "s") is None    # nothing → no judgement
+    assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: {"items": [{"i": 0, "show": False}]})), "x", cands, "s") is None   # nothing → no judgement
     assert relevance.keep(LLMClient([], {}, fake=FakeLLM(lambda r, m: "not json")), "x", cands, "s") is None      # bad answer → rules
