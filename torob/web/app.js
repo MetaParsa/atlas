@@ -62,6 +62,63 @@ function icon(name, cls) {
 }
 const scrollEnd = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 
+// --- the radish: one animated mascot that acts out what the assistant is doing ------------------------------------
+// Frames come from radish-sheet.png (built by torob/tools/radish_sprites.py). A switch plays the old state's props
+// away, a squash-and-pop, then the new state's props in. Each state stays at least DWELL ms, so a burst of events
+// still reads as a short story instead of flicker; only the last few requested states are kept.
+const Radish = (() => {
+  const S = window.RADISH_SPRITES, sheet = new Image(), canvases = new Set();
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const DWELL = 900, NAP = 45_000;
+  let cur = "idle", queue = [], plan = [], looping = false, since = 0, lastSet = performance.now(), frame = 0;
+
+  function draw(i) {
+    frame = i;
+    if (!sheet.complete || !sheet.naturalWidth) return;
+    for (const c of canvases) {
+      const g = c.getContext("2d");
+      g.imageSmoothingEnabled = false;
+      g.clearRect(0, 0, S.w, S.h);
+      g.drawImage(sheet, i * S.w, 0, S.w, S.h, 0, 0, S.w, S.h);
+    }
+  }
+  function step() {
+    const now = performance.now();
+    if (cur === "idle" && !queue.length && now - lastSet > NAP) queue.push("sleep");
+    if (looping && queue.length && now - since >= DWELL) plan = [];
+    if (!plan.length) {
+      if (queue.length && now - since >= DWELL) {
+        const a = S.states[cur], b = S.states[queue[0]], seq = (ids, ms) => ids.map((f) => [f, ms]);
+        cur = queue.shift();
+        plan = [...seq([...a.in].reverse(), a.ms), ...seq(S.pop, S.popMs), ...seq(b.in, b.ms)];
+        since = now + plan.reduce((t, [, ms]) => t + ms, 0);
+        looping = false;
+      } else {
+        const s = S.states[cur];
+        plan = s.loop.map((f) => [f, s.ms]);
+        looping = true;
+      }
+    }
+    const [f, ms] = plan.shift();
+    draw(f);
+    setTimeout(step, ms);
+  }
+
+  sheet.onload = () => draw(frame);
+  sheet.src = "/static/radish-sheet.png";
+  if (!still) setTimeout(step, 0); else draw(S.states.idle.loop[0]);
+  return {
+    attach(c) { c.width = S.w; c.height = S.h; canvases.add(c); draw(frame); },
+    set(state) {
+      lastSet = performance.now();
+      if (still) { cur = state; draw(S.states[state].loop[0]); return; }
+      if ((queue.at(-1) ?? cur) === state) return;
+      queue.push(state);
+      if (queue.length > 3) queue.splice(0, queue.length - 3);
+    },
+  };
+})();
+
 // --- talking to the server ---------------------------------------------------------------------------------------
 
 function setBusy(on) {
@@ -73,7 +130,8 @@ function setBusy(on) {
 async function post(url, body) {
   if (busy) return false;
   setBusy(true);
-  turn = { status: null, sawDone: false, block: null };
+  turn = { status: null, sawDone: false, block: null, failed: false };
+  Radish.set("think");
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                                    body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -113,8 +171,9 @@ async function post(url, body) {
   return true;
 }
 
-function showError(text) { leaveStart(); stream.append(el("div", { class: "error", text })); }
-function leaveStart() { $("#start")?.remove(); }
+function showError(text) { leaveStart(); stream.append(el("div", { class: "error", text })); oops(); }
+function leaveStart() { $("#start")?.remove(); $("#radish-dock").hidden = false; }
+function oops() { if (turn) turn.failed = true; Radish.set("oops"); }
 
 function say(text) {
   if (!text.trim() || busy) return false;
@@ -142,23 +201,26 @@ function refine(patch) { if (!busy) post("/api/refine", { conditions: patch }); 
 const handlers = {
   status(d) {
     if (!turn.status) {
-      turn.status = el("div", { class: "status" }, el("img", { class: "rmini", src: RADISH, alt: "" }), el("span"));
+      turn.status = el("div", { class: "status" }, el("span"));
       stream.append(turn.status);
     }
     turn.status.lastChild.textContent = d.text;
     turn.status.classList.toggle("busy", !d.done);
+    if (!d.done) Radish.set(d.text.includes("تماس") ? "call" : d.text.includes("فروشنده") ? "map" : "search");
   },
-  message(d) { if (d.text) stream.append(agentRow(el("div", { class: "bubble agent", text: d.text }))); },
-  error(d) { stream.append(el("div", { class: "error", text: d.text })); },
+  message(d) { if (d.text) { stream.append(agentRow(el("div", { class: "bubble agent", text: d.text }))); Radish.set("text"); } },
+  error(d) { stream.append(el("div", { class: "error", text: d.text })); oops(); },
   conditions(d) { setConditions(d); },
   question(d) {
     stream.append(el("div", { class: "question" }, agentRow(el("div", { class: "bubble agent", text: d.text })),
       el("div", { class: "chips" }, (d.chips || []).map((c) => chipButton(c)))));
+    Radish.set("text");
   },
-  product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); },
-  shop_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-shops", shopBlock(d)); },
+  product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); Radish.set("happy"); },
+  shop_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
   call_start(d) {
     callNames[d.call_id] = d.shop_name || "فروشنده";
+    Radish.set("call");
     stream.append(el("div", { class: "call sim", id: `call-${d.call_id}` },
       el("div", { class: "head" }, el("span", { class: "ring" }, icon("phone")), el("span", {}, d.title, simTag())),
       el("div", { class: "why", text: d.reasons }),
@@ -173,16 +235,17 @@ const handlers = {
     const box = $(`#call-${d.call_id}`);
     if (turn.status) { turn.status.remove(); turn.status = null; }   // «در حال تماس…» is over
     box?.append(el("div", { class: "result" }, icon("check"), el("span", { text: d.label })));
+    Radish.set("happy");
   },
   card_update(d) { updateShopCard(d); },
-  plan(d) { renderPlan(d); },
+  plan(d) { renderPlan(d); Radish.set("map"); },
   alternative(d) {
     stream.append(el("div", { class: "card alt" },
       el("div", { class: d.simulated ? "simbox sim" : "" }, el("span", { text: d.text }), d.simulated ? simTag() : null),
       d.chip ? el("div", { class: "chips start-align" }, chipButton(d.chip)) : null));
     scrollEnd();
   },
-  done() { turn.sawDone = true; if (turn.status) turn.status.classList.remove("busy"); },
+  done() { turn.sawDone = true; if (turn.status) turn.status.classList.remove("busy"); if (!turn.failed) Radish.set("idle"); },
 };
 const QUIET = new Set(["conditions", "status", "done"]);
 function handle(ev, d) {
@@ -470,6 +533,10 @@ $("#composer").addEventListener("submit", (e) => {
   const t = $("#text");
   if (say(t.value)) t.value = "";             // keep the text if it couldn't be sent (busy)
 });
+$("#text").addEventListener("input", (e) => { if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
+document.querySelectorAll("canvas.radish").forEach((c) => Radish.attach(c));
+Radish.set("happy");                          // says hello, then settles
+Radish.set("idle");
 document.addEventListener("click", (e) => {
   const s = e.target.closest("[data-say]"); if (s) say(s.dataset.say);
   const c = e.target.closest("[data-cond]"); if (c && SHEETS[c.dataset.cond]) SHEETS[c.dataset.cond]();

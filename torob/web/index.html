@@ -46,7 +46,7 @@
   <main id="stream" aria-live="polite">
     <section id="start" class="start">
       <div class="hero">
-        <img class="hero-radish" src="/static/radish.gif" alt="" width="96" height="96">
+        <canvas class="radish hero-radish" aria-hidden="true"></canvas>
         <h1>چی لازم داری؟</h1>
         <p>بگو دنبال چی هستی؛ مدل‌ها رو مقایسه می‌کنم، فروشنده‌های نزدیک و باز رو پیدا می‌کنم و به‌جات ازشون می‌پرسم.</p>
       </div>
@@ -81,6 +81,7 @@
   </main>
 
   <form id="composer" class="composer" autocomplete="off">
+    <canvas id="radish-dock" class="radish dock" aria-hidden="true" hidden></canvas>
     <label class="field">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       <input id="text" name="text" maxlength="1000" placeholder="مثلاً: شارژر سامسونگ ۲۵ وات" aria-label="پیام">
@@ -101,6 +102,7 @@
   </form>
 </dialog>
 
+<script src="/static/radish-sprites.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

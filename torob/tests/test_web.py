@@ -107,3 +107,21 @@ def test_assets_are_versioned_and_revalidated(client):
     assert "/static/app.css?v=" in page and "/static/app.js?v=" in page
     assert client.get("/static/app.css").headers["cache-control"] == "no-cache"
     assert "immutable" in client.get("/static/fonts/Vazirmatn-wght.woff2").headers["cache-control"]
+
+
+def test_radish_sprites_match_their_generator(client, tmp_path, monkeypatch):
+    """The committed sheet is exactly what torob/tools/radish_sprites.py builds, and every state's frames exist."""
+    import importlib.util, json
+    spec = importlib.util.spec_from_file_location("radish_sprites", WEB.parent / "tools" / "radish_sprites.py")
+    rs = importlib.util.module_from_spec(spec); spec.loader.exec_module(rs)
+    monkeypatch.setattr(rs, "WEB", tmp_path)
+    rs.main()
+    assert (tmp_path / "radish-sheet.png").read_bytes() == (WEB / "radish-sheet.png").read_bytes()
+    js = (tmp_path / "radish-sprites.js").read_text(encoding="utf-8")
+    assert js == (WEB / "radish-sprites.js").read_text(encoding="utf-8")
+    meta = json.loads(js.split("=", 1)[1].rstrip().rstrip(";"))
+    frames, _ = rs.build()
+    for s in meta["states"].values():
+        assert s["loop"] and all(0 <= i < len(frames) for i in s["in"] + s["loop"])
+    assert "/static/radish-sprites.js?v=" in client.get("/").text
+    assert client.get("/static/radish-sheet.png").status_code == 200

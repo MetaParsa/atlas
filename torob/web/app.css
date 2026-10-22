@@ -38,9 +38,10 @@ bdi { unicode-bidi: isolate; }
 .top { position: sticky; top: 0; z-index: 6; background: var(--card); border-bottom: 1px solid var(--line); }
 .bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px 6px; }
 .logo { width: 34px; height: 34px; flex: none; }
-.hero-radish { display: block; width: 96px; height: 96px; margin: 0 auto 6px; image-rendering: pixelated; animation: bob 3s ease-in-out infinite; }
-@keyframes bob { 50% { transform: translateY(-4px) rotate(-3deg); } }
-@media (prefers-reduced-motion: reduce) { .hero-radish, .status.busy .rmini { animation: none; } }
+/* the radish mascot: a 25x27 pixel canvas drawn at whole-pixel scales (5x on the start screen, 2x on the composer) */
+.radish { display: block; image-rendering: pixelated; }
+.hero-radish { width: 125px; height: 135px; margin: -24px auto 0; }
+.dock { position: absolute; bottom: calc(100% - 6px); inset-inline-end: 16px; width: 50px; height: 54px; pointer-events: none; }
 .brand { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
 .brand strong { font-size: 15px; font-weight: 800; }
 .brand span { font-size: 11px; color: var(--muted); }
@@ -65,15 +66,12 @@ bdi { unicode-bidi: isolate; }
 .demo { flex: none; align-self: center; font-size: 12px; color: var(--sim); border: 1px dashed var(--sim); border-radius: 8px; padding: 2px 8px; }
 
 /* stream */
-main { flex: 1; padding: 14px 12px; display: flex; flex-direction: column; gap: var(--gap); }
+main { flex: 1; padding: 14px 12px 60px; display: flex; flex-direction: column; gap: var(--gap); }
 .bubble { max-width: 86%; padding: 9px 14px; border-radius: 18px; font-size: 14px; }
 .bubble.user { align-self: flex-start; background: var(--blue); color: var(--blue-ink); border-start-start-radius: 6px; }
 .bubble.agent { align-self: flex-end; background: var(--card); border: 1px solid var(--line); border-start-end-radius: 6px; box-shadow: var(--shadow); }
 .status { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
           background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; text-align: center; }
-.rmini { display: none; width: 20px; height: 20px; image-rendering: pixelated; flex: none; }
-.status.busy .rmini { display: block; animation: hop .6s ease-in-out infinite alternate; }
-@keyframes hop { to { transform: translateY(-3px); } }
 /* the assistant speaks as Torob's radish */
 .arow { align-self: flex-end; display: flex; align-items: flex-end; gap: 6px; max-width: 92%; }
 .arow .bubble { max-width: none; }

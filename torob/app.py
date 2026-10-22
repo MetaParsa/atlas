@@ -139,7 +139,7 @@ def _index_html(stamp: tuple) -> str:
     """index.html with ?v=<content hash> on app.css/app.js, so a new deploy is a new URL for every cache."""
     import hashlib
     page = (WEB / "index.html").read_text(encoding="utf-8")
-    for name in ("app.css", "app.js"):
+    for name in ("app.css", "app.js", "radish-sprites.js"):
         v = hashlib.sha256((WEB / name).read_bytes()).hexdigest()[:10]
         page = page.replace(f"/static/{name}", f"/static/{name}?v={v}")
     return page
@@ -147,7 +147,7 @@ def _index_html(stamp: tuple) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    stamp = tuple((WEB / n).stat().st_mtime_ns for n in ("index.html", "app.css", "app.js"))
+    stamp = tuple((WEB / n).stat().st_mtime_ns for n in ("index.html", "app.css", "app.js", "radish-sprites.js"))
     return HTMLResponse(_index_html(stamp), headers={"Cache-Control": "no-cache"})
 
 
