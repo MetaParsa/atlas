@@ -19,7 +19,7 @@ from core.llm import LLMClient
 MAX_ITEMS = 40   # the advisor ranks at most 40 anyway
 PROMPT = """A shopper in Tehran asked: {want}
 
-Products found in the shop catalogue (index | title | category | typical price in toman). Prices are current Tehran
+Products found in the shop catalogue (index | title | category | typical price in toman | key specs). Prices are current Tehran
 prices (late 2026, after years of inflation), so judge prices against the other listings here, not from memory:
 {rows}
 
@@ -39,11 +39,17 @@ single spare part (one earbud, a case) of the same model in this list, or a prem
 flagship, JBL, Sony, Bose) is priced like the no-name products in this list. When the shopper asks for the
 genuine thing («اصل», «اورجینال»), a copy is show=false.
 
+Also give each product "fit" from 0 to 3: how well it serves what this shopper wants it FOR and their soft wishes
+("for gaming", "for the gym", "good camera", "for my old father", "long battery"), judged from its title, specs and
+price as an honest salesperson would. For gaming phones that means a strong chip, plenty of RAM (8 GB+), a high-refresh
+screen and a big battery; a budget entry phone is fit 0 or 1 for gaming even if it is a phone. When the shopper gave no
+purpose or wish, every product is fit 1.
+
 Finally suggest "budget_steps": three budgets in toman, ascending (entry, middle, generous), that a typical shopper
 with this request would pick between, judged from the prices of the products you marked show=true and from who it is
 for (an everyday item or a gift doesn't need to reach the most expensive listings).
 
-Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false}}, ...], "budget_steps": [a, b, c]}}
+Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false, "fit": 0-3}}, ...], "budget_steps": [a, b, c]}}
 covering every index."""
 
 
@@ -52,6 +58,7 @@ class Judgement:
     kept: list
     copies: set[str] = field(default_factory=set)   # product_ids that look like copies
     budget_steps: list[int] = field(default_factory=list)   # the model's budget buttons (the advisor clamps them)
+    fit: dict[str, int] = field(default_factory=dict)        # product_id -> 0..3, how well it serves the stated purpose
 
 
 def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
@@ -60,7 +67,9 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
     items = cands[:MAX_ITEMS]
     if not items or not want.strip():
         return None
-    rows = "\n".join(f"{i} | {c.title} | {c.category} | {c.price_median or '?'}" for i, c in enumerate(items))
+    from torob.agents.advisor import spec_pairs   # (late: advisor imports this module)
+    specs = lambda c: "; ".join(f"{k}: {v}" for k, v in spec_pairs(getattr(c, "specs", ""))[:5])[:160]
+    rows = "\n".join(f"{i} | {c.title} | {c.category} | {c.price_median or '?'} | {specs(c)}" for i, c in enumerate(items))
     try:
         res = llm.complete("judge", [{"role": "user", "content": PROMPT.format(want=want.strip(), rows=rows)}],
                            session_id=session_id, max_tokens=1500, json_mode=True)
@@ -74,4 +83,9 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
         return None
     copies = {c.product_id for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True
               and verdicts[i].get("copy") is True}
-    return Judgement(kept, copies, steps)
+    fit = {}
+    for i, c in enumerate(items):
+        v = verdicts.get(i, {}).get("fit")
+        if verdicts.get(i, {}).get("show") is True and isinstance(v, (int, float)):
+            fit[c.product_id] = max(0, min(3, int(v)))
+    return Judgement(kept, copies, steps, fit)

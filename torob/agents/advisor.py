@@ -288,7 +288,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     reps = _named_first(need, _brand_filter(need, reps, notes))
     if judge:
         reps = _affordable_first(reps, cond.budget_max, need.price_pref == "cheap")
-    n_found, n_matching, copies, steps = len(reps), None, set(), []
+    n_found, n_matching, copies, steps, fit = len(reps), None, set(), [], {}
     if judge:
         j = judge(reps)
         if j is None:     # no usable judgement: back to the narrow, rule-picked categories
@@ -298,6 +298,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                                  [], None, 0, False, n_candidates=n_found, n_matching=0)
         else:             # only the products that are the thing asked for compete
             reps, copies, n_matching, steps = j.kept, j.copies | _priced_like_copies(j.kept), len(j.kept), j.budget_steps
+            fit = j.fit
             # likely copies stay among the cards (the shopper may want the cheap one); each card carries the flag,
             # and the answer step mentions it when the shopper asks about originality, price or which to buy
     stats = area_stats([c.product_id for c in reps[:150]], cond)
@@ -345,6 +346,11 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         cut = sorted(price[c.product_id] for c in pool)[max(2, len(pool) // 2)]
         pool = [c for c in pool if price[c.product_id] <= cut]
     pool = pool[:40]   # keep relevance: only the best text matches compete
+    if fit and len({fit.get(c.product_id, 1) for c in pool}) > 1:   # «گوشی برای بازی»: the ones that suit it compete
+        best = max(fit.get(c.product_id, 1) for c in pool)
+        suited = [c for c in pool if fit.get(c.product_id, 1) >= best - 1 and fit.get(c.product_id, 1) >= 1]
+        if len(suited) >= 2:
+            pool = suited
     if judge and pool:   # «چند تا پیشنهاد بده» for a trip kept a tent AND a torch: cards compare one kind of product
         main = Counter(c.category for c in pool[:10]).most_common(1)[0][0]   # the kind most of the best matches are
         same = [c for c in pool if c.category == main]
@@ -358,7 +364,8 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
 
     def value_score(c: search.Candidate) -> float:
         cheapness = min(1.0, med_price / max(1, price[c.product_id]))
-        return 0.5 * rel[c.product_id] + 0.3 * math.log1p(avail[c.product_id]) / math.log1p(max_avail) + 0.2 * cheapness
+        base = 0.5 * rel[c.product_id] + 0.3 * math.log1p(avail[c.product_id]) / math.log1p(max_avail) + 0.2 * cheapness
+        return base + (fit.get(c.product_id, 1) if fit else 0)   # fit for the purpose decides first, then value
 
     chosen: list[search.Candidate] = []
     keys = (lambda c: -value_score(c), lambda c: (price[c.product_id], c.rank), lambda c: (-avail[c.product_id], c.rank))

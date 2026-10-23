@@ -247,3 +247,22 @@ def test_a_text_to_a_shop_not_on_screen_is_refused():
     list(run_turn(_rule_llm(), SessionState(), em, chip=Chip(label="x", kind="direct_call", tool="sms_shop",
                                                               args={"shop_id": "shop_fake", "product_id": "product_fake"})))
     assert any(e == "error" for e, _ in em.events) and not any(e == "call_start" for e, _ in em.events)
+
+
+def test_fit_for_purpose_decides_which_models_compete():
+    """«گوشی برای بازی»: the judge rates fit 0–3; entry phones (fit 0) must not be picked over gaming ones."""
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from torob.agents import advisor, relevance
+    from torob.models import Conditions, Need
+    need = Need(product_type="گوشی موبایل", keywords=["گوشی سامسونگ"], use_case="بازی")
+    seen = {}
+    def judge(cands):
+        kept = cands[:8]
+        fit = {c.product_id: (3 if i in (5, 6, 7) else 0) for i, c in enumerate(kept)}
+        seen["gaming"] = {c.product_id for i, c in enumerate(kept) if i in (5, 6, 7)}
+        return relevance.Judgement(kept, fit=fit)
+    res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
+    assert res.picks and {p.c.product_id for p in res.picks} <= seen["gaming"]
