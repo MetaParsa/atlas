@@ -183,9 +183,21 @@ def _router_output(data: dict) -> RouterOutput:
     return RouterOutput.model_validate(data)
 
 
+def _on_screen(state: SessionState) -> str:
+    """What the shopper is looking at, for the router: «کدومش بهتره؟» is about these cards, not a new search."""
+    if state.last_block_kind == "shops" and state.shops_shown:
+        product = next((p["title"] for p in state.products_shown if p["product_id"] == state.selected_product_id), "")
+        return f"الان روی صفحه: فروشنده‌های «{product}»: " + "، ".join(s["name"] for s in state.shops_shown[:5])
+    if state.last_block_kind == "products" and state.products_shown:
+        return "الان روی صفحه: کارت‌های محصول: " + "، ".join(f"«{p['title']}»" for p in state.products_shown[:4])
+    return "الان روی صفحه نتیجه‌ای نیست."
+
+
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
-    """History (previous turns only) + this message → RouterOutput. Any failure → rule_route (and is recorded)."""
-    messages = [{"role": "system", "content": ROUTER_PROMPT}, *state.history[-6:], {"role": "user", "content": text}]
+    """History (previous turns only) + what is on screen + this message → RouterOutput. Any failure → rule_route
+    (and is recorded)."""
+    system = f"{ROUTER_PROMPT}\n\n{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."
+    messages = [{"role": "system", "content": system}, *state.history[-6:], {"role": "user", "content": text}]
 
     def note(e: Exception, reply: str = "") -> None:
         if getattr(llm, "enabled", False):
