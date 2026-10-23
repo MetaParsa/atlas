@@ -6,6 +6,8 @@ returns unusable JSON or the budget is spent.
 """
 
 import re
+import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from typing import Literal
 from datetime import datetime, timedelta
@@ -123,13 +125,20 @@ def rule_route(text: str, allow_ask: bool = True) -> RouterOutput:
     return RouterOutput(intent="hub" if hub else "need", need=need, conditions_patch=patch)
 
 
+ROUTER_FALLBACKS: deque = deque(maxlen=20)   # why the model's reading wasn't used (shown on /admin)
+
+
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
-    """History (previous turns only) + this message → RouterOutput. Any failure → rule_route."""
+    """History (previous turns only) + this message → RouterOutput. Any failure → rule_route (and is recorded)."""
     messages = [{"role": "system", "content": ROUTER_PROMPT}, *state.history[-6:], {"role": "user", "content": text}]
+    res = None
     try:
         res = llm.complete("router", messages, session_id=session_id, max_tokens=900, json_mode=True)   # Persian JSON is token-heavy
         return RouterOutput.model_validate(res.json())
-    except Exception:   # LLM error, budget spent, bad JSON, schema mismatch: the app keeps working on rules
+    except Exception as e:   # LLM error, budget spent, bad JSON, schema mismatch: the app keeps working on rules
+        if getattr(llm, "enabled", False):
+            ROUTER_FALLBACKS.append({"at": time.strftime("%H:%M:%S"), "error": f"{type(e).__name__}: {str(e)[:200]}",
+                                     "reply": (res.text[:300] if res is not None else "")})
         return rule_route(text)
 
 

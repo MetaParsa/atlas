@@ -99,6 +99,8 @@ class RouterOutput(BaseModel):
     def _nulls_are_empty(cls, v):
         if isinstance(v, dict):
             v = {k: x for k, x in v.items() if not (x is None and k in ("conditions_patch", "target", "message"))}
+            if v.get("intent") not in cls.model_fields["intent"].annotation.__args__:
+                v["intent"] = "other"   # a label of the model's own («greeting», «small_talk»): talk, don't search
             q = v.get("question")
             if isinstance(q, dict) and (not str(q.get("text") or "").strip() or len(q.get("options") or []) < 2):
                 v["question"] = None   # a question without at least two answers is just prose; drop it

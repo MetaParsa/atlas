@@ -362,6 +362,9 @@ def admin() -> HTMLResponse:
     ]
     errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
                    for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"
+    from torob.router import ROUTER_FALLBACKS
+    errs += "".join(f"<tr><td>{e(x['at'])}</td><td>فهم پیام به قواعد برگشت: {e(x['error'])}</td><td>{e(x['reply'])}</td></tr>"
+                    for x in list(ROUTER_FALLBACKS)[::-1])
     body = "".join(f"<h2>{e(t)}</h2><table>{rows(items)}</table>" for t, items in sections)
     page = f"""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>پشت صحنه</title>
