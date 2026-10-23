@@ -184,14 +184,18 @@ def candidates(need: Need, limit_per_query: int = 60, wide: bool = False) -> tup
     hinted = hint_categories(con, need.category_hints, accessories=acc)
     cats = [c for c in inferred if c in hinted] or inferred or hinted
     fetch = list(dict.fromkeys(cats + hinted))[:4] if wide else cats   # `cats` stays the narrow, rule-picked set
-    by_id: dict[str, tuple[int, dict]] = {}
+    # Reciprocal rank fusion: a product found by several of the shopper's phrasings («ایرپاد پرو 2», «اپل ایرپادز پرو 2»)
+    # outranks one that a single phrasing ranks high. Keeping only each product's best rank let four lists' top-10s
+    # push the genuine AirPods Pro 2 (10th–19th in the Persian queries) past the 40 the relevance judge reads.
+    fused: dict[str, float] = {}
     for q in qs:
         for c in fetch:
             for i, r in enumerate(store.search_products(con, q, limit=limit_per_query, category=c)):
-                if r["product_id"] not in by_id or i < by_id[r["product_id"]][0]:
-                    by_id[r["product_id"]] = (i, r)
-    if not by_id:
+                fused[r["product_id"]] = fused.get(r["product_id"], 0.0) + 1 / (10 + i)
+    if not fused:
         return [], cats
+    order = {pid: n for n, pid in enumerate(sorted(fused, key=lambda pid: -fused[pid]))}
+    by_id = {pid: (n, None) for pid, n in order.items()}
     ids = list(by_id)
     rows = con.execute(
         f"SELECT product_id, title, title_norm, brand, category, image, specs, spec_count, sellers_total, price_min, "
