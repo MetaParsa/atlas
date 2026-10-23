@@ -12,11 +12,6 @@
     const t = (x) => fa(String(Number(x.toFixed(2)))).replace(".", "٫");
     return n >= 1e9 ? `${t(n / 1e9)} میلیارد` : n >= 1e6 ? `${t(n / 1e6)} میلیون` : n >= 1e3 ? `${t(n / 1e3)} هزار` : fa(n);
   }
-  function navHref(lat, lon) {
-    const p = `${lat.toFixed(6)},${lon.toFixed(6)}`;
-    return isPhone ? `geo:${p}?q=${p}` : `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lon.toFixed(6)}#map=18/${lat.toFixed(6)}/${lon.toFixed(6)}`;
-  }
-
   // --- one Leaflet map (interactive in the full view, still in the chat) --------------------------------------------
   function makeMap(node, interactive) {
     node.setAttribute("dir", "ltr");   // Leaflet lays out its panes left-to-right; our overlays stay RTL
@@ -246,7 +241,7 @@
       el("div", { class: "ln" }, icon("box"), el("span", { text: "موجودی: تأیید نشده" + (p.credit ? " · قسطی دارد" : "") })),
       el("div", { class: "mv-actions" },
         el("button", { type: "button", class: "btn red", onclick: () => act(call, `زنگ به «${p.name}»`) }, icon("phone"), el("span", { text: "زنگ بزن بپرس" })),
-        el("a", { class: "btn line", href: navHref(p.lat, p.lon), target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر" }))));
+        el("button", { type: "button", class: "btn line", onclick: () => openRoute({ lat: p.lat, lng: p.lon, name: p.name }) }, icon("nav"), el("span", { text: "مسیریابی" }))));
     V.map.panTo([p.lat, p.lon], { animate: true });
   }
   function groupPanel(g, d) {
@@ -301,7 +296,7 @@
       el("div", { class: "meta", text: `${fa(b.shops)} فروشنده از ${fa(d.total)} در تهران (${fa(Math.round(b.share * 100))}٪) · ${fa(b.floors)} طبقه · ${b.area}` }),
       el("div", { class: "mv-actions" },
         el("button", { type: "button", class: "btn blue", onclick: () => act(go, go.label) }, icon("store"), el("span", { text: "مدل‌ها همین‌جا" })),
-        el("a", { class: "btn line", href: navHref(b.lat, b.lon), target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر" }))),
+        el("button", { type: "button", class: "btn line", onclick: () => openRoute({ lat: b.lat, lng: b.lon, name: `${b.kind} ${b.name}` }) }, icon("nav"), el("span", { text: "مسیریابی" }))),
       el("button", { type: "button", class: "ghost", text: "همه‌ی بورس‌ها", onclick: () => hubList(d) }));
   }
 

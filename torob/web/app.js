@@ -676,7 +676,6 @@ const isPhone = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
 function renderPlan(p, quiet = false) {
   const sim = p.simulated || {};
-  const nav = isPhone ? p.nav.geo_uri : p.nav.osm_url;
   const open = p.open_at_arrival === "yes" ? "open-yes" : p.status === "closed_at_arrival" ? "open-no" : "";
   const card = el("article", { class: "card plan" },
     el("div", { class: "plan-h" }, icon("list"), el("span", { text: "برنامه‌ی خرید" })),
@@ -697,7 +696,8 @@ function renderPlan(p, quiet = false) {
       p.lat != null ? miniMap({ center: cond?.center, route: true,
         points: [{ shop_id: p.shop_id, name: p.name, lat: p.lat, lon: p.lon, pin: p.name, rank: null, open: p.open_at_arrival }],
         onOpen: () => openProductMap(p.product_id, shortTitle(p.product_title)) }, "روی نقشه") : null,
-      el("a", { class: "btn red", href: nav, target: isPhone ? null : "_blank", rel: "noopener" }, icon("nav"), el("span", { text: "مسیر تا فروشگاه" })),
+      p.lat != null ? el("button", { type: "button", class: "btn red", onclick: () => openRoute({ lat: p.lat, lng: p.lon, name: p.name }) },
+        icon("nav"), el("span", { text: "مسیریابی تا فروشگاه" })) : null,
       el("div", { class: "chips start-align" }, chipButton(p.recheck, "chip", undefined))));
   planSlot.replaceChildren(card);
   const bar = $("#plan-bar");
@@ -768,6 +768,37 @@ function openSheet(title, build) {
   sheetBody.replaceChildren(build());
   sheet.showModal();
 }
+// «مسیریابی»: Neshan or Google Maps with the start and the shop filled in. The start is where the shopper said they
+// are; if they haven't said, the phone's location is asked once; without it, the maps app uses its own.
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+function routeLinks(from, to, walk) {
+  const ll = (p) => `${(+p.lat).toFixed(6)},${(+p.lng).toFixed(6)}`;
+  const g = new URL("https://www.google.com/maps/dir/");
+  g.searchParams.set("api", "1");
+  if (from) g.searchParams.set("origin", ll(from));
+  g.searchParams.set("destination", ll(to));
+  g.searchParams.set("travelmode", walk ? "walking" : "driving");
+  // Neshan's own link format (NeshanMaps/Neshan-MCP utils/deeplinks.py): Android/web routes by car only, iOS also walks
+  const q = from && `origin=${ll(from)}&destination=${ll(to)}&vehicle=${isIOS && walk ? "w" : "d"}`;
+  const neshan = from ? (isIOS ? `neshan://?${q}` : `https://nshn.ir/?${q}`)
+                      : (isIOS ? `neshan://?ll=${ll(to)}` : `https://nshn.ir/?lat=${(+to.lat).toFixed(6)}&lng=${(+to.lng).toFixed(6)}`);
+  return { google: g.toString(), neshan };
+}
+function openRoute(to) {   // to = { lat, lng, name }
+  const walk = cond?.mode !== "car";
+  const show = (from, fromText) => openSheet(`مسیریابی تا «${to.name}»`, () => {
+    const links = routeLinks(from, to, walk);
+    const app = (label, href) => el("a", { class: "opt", href, target: isPhone ? null : "_blank", rel: "noopener",
+                                           onclick: () => setTimeout(() => sheet.close(), 0) }, icon("nav"), el("span", { text: label }));
+    return el("div", { class: "opts" }, app("نشان", links.neshan), app("گوگل مپ", links.google),
+      el("div", { class: "meta", text: `مبدا: ${fromText} · مقصد: ${to.name}` }));
+  });
+  if (cond?.located && cond.center) return show(cond.center, cond.area || "جایی که گفتی");
+  if (!navigator.geolocation) return show(null, "مکان فعلی گوشی (خود برنامه‌ی نقشه)");
+  navigator.geolocation.getCurrentPosition((p) => show({ lat: p.coords.latitude, lng: p.coords.longitude }, "مکان فعلی گوشی"),
+    () => show(null, "مکان فعلی گوشی (خود برنامه‌ی نقشه)"), { timeout: 6000, maximumAge: 300000 });
+}
+
 function opts(list, current, apply) {
   return el("div", { class: "opts" }, list.map(([v, label]) => el("button", {
     type: "button", class: "opt" + (v === current ? " on" : ""), text: label,

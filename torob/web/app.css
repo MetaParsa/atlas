@@ -637,3 +637,7 @@ table.compare td:first-child { color: var(--muted); }
 /* the AI-built blocks look like every other card: no «چیده‌شده با هوش مصنوعی» tag, no red top edge */
 .gen-tag { display: none; }
 .gcard { border-top: 0; background: var(--card); }
+
+/* «مسیریابی»: one row per maps app */
+.sheet a.opt { justify-content: flex-start; color: var(--ink); text-decoration: none; font-weight: 600; }
+.sheet a.opt svg { color: var(--red); }
