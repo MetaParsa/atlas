@@ -774,7 +774,10 @@ function setConditions(d) {
   $("#loc-label").textContent = (d.area || "تهران") + (d.located ? "" : " (پیش‌فرض؛ بزن تا عوض کنی)");
   if (hasResults) strip.hidden = false;      // R1: the strip appears with the first results, not before
   const set = (key, label, on) => { const b = $(`[data-cond="${key}"]`, strip); b.textContent = label; b.classList.toggle("on", on); };
-  if (d.located) $("#start-gps")?.setAttribute("hidden", "");   // the start screen's «مکان من»: gone once we know (never back)
+  if (d.located) {   // the start screen's «مکانم رو پیدا کن»: gone once we know where you are, for good
+    $("#start-gps")?.setAttribute("hidden", "");
+    try { localStorage.setItem(GEO_OK, "1"); } catch (_) {}
+  }
   set("loc", d.located ? (d.area || "مکان من") : "مکانت کجاست؟", !!d.located);   // stays reachable when the row above hides
   const pay = (PAYMENTS.find((p) => p[0] === d.payment) || PAYMENTS[0])[1];
   set("radius", km(d.radius_km), d.radius_km !== 3);
@@ -1021,7 +1024,8 @@ document.addEventListener("click", (e) => {
   const c = e.target.closest("[data-cond]"); if (c && SHEETS[c.dataset.cond]) SHEETS[c.dataset.cond]();
 });
 $("#loc").addEventListener("click", openLocation);
-{ const g = $("#start-gps"); if (g) { g.prepend(icon("pin")); g.addEventListener("click", () => useGps());
+{ const g = $("#start-gps"); if (g) { g.prepend(icon("pin"));
+    g.addEventListener("click", () => { try { localStorage.setItem(GEO_OK, "1"); } catch (_) {} g.hidden = true; useGps(); });
     // already allowed or used once in this browser: never offered again (the location is taken when it matters)
     let ok = false; try { ok = !!localStorage.getItem(GEO_OK); } catch (_) {}
     if (ok) g.hidden = true;
