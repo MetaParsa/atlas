@@ -184,17 +184,39 @@ def _dedupe(cands: list[search.Candidate]) -> tuple[list[search.Candidate], dict
 def _brand_filter(need: Need, reps: list[search.Candidate], notes: list[str]) -> list[search.Candidate]:
     """A chosen brand (chip) or a brand named in the text («آیفون» = اپل) narrows the picks; say so if it can't."""
     known = {normalize_fa(c.brand) for c in reps if c.brand}
-    wanted = {normalize_fa(b) for b in need.brand_pref if b}
-    if not wanted:
+    if need.brand_pref:   # the model may write «Apple» or «اپل»: aliases map both to the dataset's own spelling
+        wanted = search.brands_in(" ".join(need.brand_pref), known) | ({normalize_fa(b) for b in need.brand_pref} & known)
+    else:
         text = " ".join(filter(None, [need.named_product, need.product_type, *need.keywords]))
         wanted = search.brands_in(text, known)
     if not wanted:
+        if need.brand_pref:
+            notes.append(f"از برند {'، '.join(need.brand_pref)} چیزی ثبت نشده؛ بقیه رو آوردم.")
         return reps
-    branded = [c for c in reps if c.brand and normalize_fa(c.brand) in wanted]
+
+    def theirs(c: search.Candidate) -> bool:   # a quarter of listings have no brand: then the title decides
+        return normalize_fa(c.brand) in wanted if c.brand else bool(search.brands_in(c.title, wanted))
+
+    branded = [c for c in reps if theirs(c)]
     if need.brand_pref and len(branded) < 2:
         names = "، ".join(need.brand_pref)
         notes.append(f"از برند {names} چیز زیادی ثبت نشده" + ("؛ همین یکی رو آوردم." if branded else "؛ بقیه رو آوردم."))
     return branded if branded and (need.brand_pref or len(branded) >= 2) else reps
+
+
+def _named_first(need: Need, reps: list[search.Candidate]) -> list[search.Candidate]:
+    """For a named model, listings whose title holds one of the shopper's phrasings («ایرپاد پرو 2») come first, so the
+    relevance judge (it reads the top 40) sees them; ties keep the search order."""
+    if not need.named_product:
+        return reps
+    phrases = [search.title_tokens(normalize_fa(p)) for p in [need.named_product, *need.keywords] if p]
+    phrases = [p for p in phrases if p]
+    if not phrases:
+        return reps
+    def cover(c: search.Candidate) -> float:
+        t = search.title_tokens(c.title_norm)
+        return max(len(p & t) / len(p) for p in phrases)
+    return sorted(reps, key=lambda c: -round(cover(c), 1))
 
 
 def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
@@ -205,7 +227,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم."], [], None, 0, False)
 
     reps, same_title = _dedupe(cands)
-    reps = _brand_filter(need, reps, notes)
+    reps = _named_first(need, _brand_filter(need, reps, notes))
     n_found, n_matching, copies, steps = len(reps), None, set(), []
     if judge:
         j = judge(reps)

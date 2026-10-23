@@ -67,16 +67,17 @@ class Candidate:
 
 
 def queries_for(need: Need) -> list[str]:
-    """The user's own keywords first, then synonym-widened variants (deduped, max 4)."""
+    """Every phrasing from the shopper's words first (the model's keywords hold both scripts: «airpods pro 2» and
+    «ایرپاد پرو 2»), then a brand-widened and synonym-widened variant (deduped, max 5). Variants used to come first and
+    could push the Persian phrasing out, so «airpods pro 2» never reached the Persian titles."""
     base = [normalize_fa(k) for k in (need.keywords or [need.product_type]) if k and k.strip()]
     if need.named_product:
         base.insert(0, normalize_fa(need.named_product))
+    out: list[str] = list(base)
     for brand in need.brand_pref[:1]:   # a chosen brand also widens the search, so its products are found
         if brand:
-            base = [f"{base[0]} {normalize_fa(brand)}"] + base if base else [normalize_fa(brand)]
-    out: list[str] = []
+            out.append(f"{base[0]} {normalize_fa(brand)}" if base else normalize_fa(brand))
     for q in base:
-        out.append(q)
         padded = f" {q} "
         for word, alts in _SYN.items():
             if f" {word} " in padded:   # whole words only («اپل» must not hit «اپلیکیشن»)
@@ -86,7 +87,7 @@ def queries_for(need: Need) -> list[str]:
         if q and q not in seen:
             seen.add(q)
             uniq.append(q)
-    return uniq[:4]
+    return uniq[:5]
 
 
 def head_word(need: Need) -> str:
