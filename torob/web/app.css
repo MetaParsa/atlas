@@ -514,7 +514,7 @@ table.compare td:first-child { color: var(--muted); }
 }
 
 /* --- maps: small map cards in the chat, the full-screen map, Apple-Maps-like price pins ------------------------- */
-.mini-wrap { position: relative; border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow); background: var(--card-2); }
+.mini-wrap { position: relative; isolation: isolate; z-index: 0; border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow); background: var(--card-2); }
 .mini-map { height: 150px; cursor: pointer; background: var(--card-2); }
 @media (min-width: 700px) { .mini-map { height: 190px; } }
 .mini-map.failed { display: grid; place-items: center; color: var(--muted); font-size: 13px; cursor: default; }
