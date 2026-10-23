@@ -1216,3 +1216,12 @@ scenarios:
   expect:
   - {must_show_any: [products, question], facts: ["category~گوشی"]}
   ideal: "گوشی‌های واقعی ارزان شیائومی؛ آگهی‌ای که اسمش گوشی است ولی قیمتش مثل قطعه است نشان داده نشود و یک خط کوتاه بگوید چرا."
+- id: vague-phone
+  group: messy
+  persona: کاربر واقعی، خیلی کلی
+  turns: ["سلام تربچه.", "میخوام گوشی بخرم بهم کمک کن.", "عکاسی"]
+  expect:
+  - {must_not: [search]}
+  - {must_show: [question], must_not: [products]}
+  - {must_show_any: [products, question]}
+  ideal: "اول بپرسد برای چه کاری (روزمره، بازی، عکاسی، ساده) یا چه بودجه‌ای؛ بعد گوشی‌های مناسب همان کاربرد، نه سه نوکیای ساده."

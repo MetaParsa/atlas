@@ -703,6 +703,9 @@ def ask_with_options(state: SessionState, em: Emitter, q) -> str:
     return em.emit("question", {"text": q.text, "chips": [c.model_dump() for c in chips]})
 
 
+WIDE_SPAN = 20   # judged matches whose prices run 20× from the cheap end to the dear end: ask before showing models
+
+
 def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: bool = False) -> Iterator[str]:
     """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
     yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
@@ -719,6 +722,18 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
         yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(card)],
                                         "compare_rows": [], "notes": res.notes})
         yield from show_shops(state, em)   # R7: a named model skips straight to its sellers
+        return
+    n = state.need
+    vague = not (state.conditions.budget_max or n.use_case or n.brand_pref or n.named_product or n.must_have
+                 or n.price_pref == "cheap")
+    q = res.question
+    if ask and vague and res.n_matching is not None and res.price_span >= WIDE_SPAN and q and q["text"] not in state.asked:
+        # «میخوام گوشی بخرم»: the matches run from a 2M feature phone to a 180M flagship; three of them at random would
+        # be a guess. The budget buttons come first (with «فرقی نداره»), the models after the answer.
+        state.asked.append(q["text"])
+        state.remember("assistant", q["text"])
+        yield em.emit("status", {"text": "مدل‌هاش از خیلی ساده تا خیلی گرونه", "done": True})
+        yield em.emit("question", q)
         return
     cards = [p.card() for p in res.picks]
     _select_product(state, None)   # a new set of products: no shop or plan from the previous one is callable

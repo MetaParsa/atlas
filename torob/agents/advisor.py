@@ -102,6 +102,7 @@ class AdvisorResult:
     n_candidates: int = 0
     n_nearby: int = 0
     n_matching: int | None = None   # how many the model judged to be the thing asked for (None = no model)
+    price_span: float = 1.0         # 90th / 10th percentile price of the matches: ≥ ~15 = from basic to premium
 
 
 def _fresh_cutoff() -> str:
@@ -406,9 +407,12 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                      "بعضی از این‌ها فقط دو فروشنده‌ی نزدیک دارن.")
     if question is None and not named:
         question = _question(need, cond, price, picks, steps)
+    vals = sorted(v for v in price.values() if v)
+    span = vals[int(.9 * (len(vals) - 1))] / max(1, vals[int(.1 * (len(vals) - 1))]) if len(vals) >= 5 else 1.0
     return AdvisorResult(picks, cats, notes, _compare_rows(picks), None if named else question,
                          floor_used, in_area, named, n_candidates=n_found, n_matching=n_matching,
-                         n_nearby=sum(1 for c in reps if stats.get(c.product_id, AreaStat()).sellers > 0))
+                         n_nearby=sum(1 for c in reps if stats.get(c.product_id, AreaStat()).sellers > 0),
+                         price_span=span)
 
 
 def _label(picks: list[Pick]) -> None:
