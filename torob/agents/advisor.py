@@ -167,18 +167,42 @@ def _named(need: Need, reps: list[search.Candidate], stats: dict[str, AreaStat],
 
 
 def _dedupe(cands: list[search.Candidate]) -> tuple[list[search.Candidate], dict[str, list[str]]]:
-    """Same-title products: keep the one most sellers list, remember the rest («۳ نسخه با همین اسم»)."""
+    """Same-title products: keep the one most sellers list, remember the rest («۳ نسخه با همین اسم») — unless their
+    prices are more than 3× apart: a 2.4M and a 41M «هدفون بی سیم اپل مدل ایرپاد پرو 2» are a copy and the real thing,
+    and merging them hid the real one from the relevance judge."""
     groups: dict[str, list[search.Candidate]] = {}
     for c in sorted(cands, key=lambda c: c.rank):
         groups.setdefault(c.title_norm, []).append(c)
     reps, same = [], {}
     for g in groups.values():
-        rep = max(g, key=lambda c: c.sellers_total)
-        rep.rank = min(c.rank for c in g)
-        reps.append(rep)
-        same[rep.product_id] = [c.product_id for c in g if c is not rep]
+        tiers: list[list[search.Candidate]] = []
+        for c in sorted(g, key=lambda c: c.price_median or 0):
+            if tiers and (c.price_median or 0) <= 3 * max(1, tiers[-1][0].price_median or 0):
+                tiers[-1].append(c)
+            else:
+                tiers.append([c])
+        for t in tiers:
+            rep = max(t, key=lambda c: c.sellers_total)
+            rep.rank = min(c.rank for c in t)
+            reps.append(rep)
+            same[rep.product_id] = [c.product_id for c in t if c is not rep]
     reps.sort(key=lambda c: c.rank)
     return reps, same
+
+
+def _priced_like_copies(reps: list[search.Candidate]) -> set[str]:
+    """The same model (near-identical title, same model numbers) at under a third of another listing's price is a
+    likely copy: a 10.8M «ایرپاد پرو ۲» next to a 41M one. Legitimate variants of one model (storage, colour) stay
+    well within that gap. Arithmetic on top of the judge, which misses it when only fakes are cheaper still."""
+    out = set()
+    for c in reps:
+        for d in reps:
+            if (d is not c and c.price_median and d.price_median and c.price_median < d.price_median / 3
+                    and search.near_duplicate(c.title_norm, d.title_norm, 0.6)
+                    and set(search.model_tokens(c.title)) == set(search.model_tokens(d.title))):
+                out.add(c.product_id)
+                break
+    return out
 
 
 def _brand_filter(need: Need, reps: list[search.Candidate], notes: list[str]) -> list[search.Candidate]:
@@ -237,7 +261,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
             return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی که دقیقاً همین باشه پیدا نکردم؛ یه جور دیگه بگو یا عکسش رو بفرست."],
                                  [], None, 0, False, n_candidates=n_found, n_matching=0)
         else:             # only the products that are the thing asked for compete
-            reps, copies, n_matching, steps = j.kept, j.copies, len(j.kept), j.budget_steps
+            reps, copies, n_matching, steps = j.kept, j.copies | _priced_like_copies(j.kept), len(j.kept), j.budget_steps
             real = [c for c in reps if c.product_id not in copies]
             if real and len(real) < len(reps):   # never recommend a likely copy over the real thing
                 notes.append(f"{to_fa_digits(len(reps) - len(real))} آگهیِ ارزان‌تر شبیه طرح یا کپی بود؛ کنارشون گذاشتم.")

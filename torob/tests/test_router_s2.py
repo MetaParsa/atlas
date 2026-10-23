@@ -154,3 +154,17 @@ def test_likely_copies_step_aside_when_a_real_one_is_found():
     res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
     assert res.picks and all(not p.copy_suspect for p in res.picks)
     assert any("کپی" in n for n in res.notes)
+
+
+def test_same_title_at_very_different_prices_is_not_merged_and_the_cheap_one_looks_like_a_copy():
+    from types import SimpleNamespace as NS
+    from torob.agents import advisor
+    mk = lambda pid, title, price, rank: NS(product_id=pid, title=title, title_norm=title, price_median=price,
+                                           sellers_total=5, rank=rank)
+    real = mk("r", "هدفون بی سیم اپل مدل ایرپاد پرو 2", 41_000_000, 3)
+    fake = mk("f", "هدفون بی سیم اپل مدل ایرپاد پرو 2", 2_400_000, 1)
+    mid = mk("m", "هندزفری بی سیم اپل ایرپاد پرو ۲", 10_800_000, 2)
+    other = mk("o", "هدفون بی سیم اپل مدل ایرپاد پرو 3", 60_000_000, 4)   # another model: never the reference
+    reps, _ = advisor._dedupe([real, fake, mid, other])
+    assert {c.product_id for c in reps} == {"r", "f", "m", "o"}            # 17× apart: two different things
+    assert advisor._priced_like_copies([real, fake, mid, other]) == {"f", "m"}

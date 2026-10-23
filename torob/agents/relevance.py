@@ -34,8 +34,9 @@ For EACH product decide whether a sensible salesperson would show it for this re
   of what a product is (a speaker costing ten times the portable ones is a large home or party speaker). Soft wishes
   ("good", "cheap", "for the gym") never make it a no.
 Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
-its price is a small fraction of other listings of the same model in this list, or a premium brand's item (Apple,
-Samsung flagship, JBL, Sony, Bose) is priced like the no-name products in this list. When the shopper asks for the
+its price is under about half of other listings of the same model in this list, it costs less than a used one or a
+single spare part (one earbud, a case) of the same model in this list, or a premium brand's item (Apple, Samsung
+flagship, JBL, Sony, Bose) is priced like the no-name products in this list. When the shopper asks for the
 genuine thing («اصل», «اورجینال»), a copy is show=false.
 
 Finally suggest "budget_steps": three budgets in toman, ascending (entry, middle, generous), that a typical shopper
