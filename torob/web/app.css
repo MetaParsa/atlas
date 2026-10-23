@@ -1,6 +1,6 @@
 /* Torob's design language, read from torob.com's own tokens: slate neutrals, flat white cards (8–12 px corners, no
    shadows) on a light slate page, 14 px type with bold titles and prices, brand red only for the main action, dark
-   navy buttons for the rest, outlined pills for chips and filters, and TorobChat's purple for anything the AI made.
+   navy buttons for the rest, outlined pills for chips and filters, and the brand red again for anything the AI made.
    Torob's font (IRANYekanX) is commercial, so Vazirmatn stands in. 44 px touch targets stay. Simulated facts keep
    their own amber dashed style (honesty rule). Light and dark follow the system, like torob.com. */
 @font-face {
@@ -16,7 +16,8 @@
   --blue: #3468cc; --blue-ink: #fff; --blue-soft: #eff6ff;
   --navy: #1e293b; --navy-ink: #f8fafc;                                 /* Torob's «black» button */
   --red: #d73948; --red-d: #bf2f3d; --red-ink: #fff; --red-soft: #fff0f2;   /* Torob brand red: the main action */
-  --ai: linear-gradient(90deg, #7c3aed, #9333ea); --ai-solid: #7c3aed; --ai-soft: #f3edff;   /* TorobChat purple */
+  --ai: linear-gradient(90deg, #d73948, #e85d6a); --ai-solid: #d73948; --ai-soft: #fff0f2;   /* the AI's own marks: Torob red too */
+  --ai-ring: rgba(215, 57, 72, .18);
   --green: #3d8b40; --green-soft: #eefceb; --lime: #9ce76a; --lime-ink: #14532d;
   --sim: #b25000; --sim-soft: #fff4e5;                                 /* simulated facts: amber, dashed, tagged */
   --warn: #c2410c; --bad: #d70040; --bad-soft: #fff0f2;
@@ -32,7 +33,7 @@
           --bar: #212b36; --bubble: #212b36;
           --blue: #60a5fa; --blue-ink: #0f172b; --blue-soft: rgba(59, 130, 246, .16);
           --navy: #f1f5f9; --navy-ink: #0f172b; --red: #e0505d; --red-d: #ea6b76; --red-soft: rgba(244, 63, 94, .14);
-          --ai-soft: rgba(124, 58, 237, .18);
+          --ai: linear-gradient(90deg, #e0505d, #ea6b76); --ai-solid: #e0505d; --ai-soft: rgba(244, 63, 94, .14); --ai-ring: rgba(224, 80, 93, .3);
           --green: #5cc160; --green-soft: rgba(76, 175, 80, .16);
           --sim: #ff9f0a; --sim-soft: rgba(255, 159, 10, .1); --warn: #fb923c; --bad: #f43f5e; --bad-soft: rgba(244, 63, 94, .14);
           --ring: 0 0 0 3px rgba(96, 165, 250, .4); }
@@ -213,7 +214,7 @@ table.compare td:first-child { color: var(--muted); }
 
 /* generative UI: blocks the model chose for an answer (compare, bars, pick, checklist, next steps) */
 .gen { display: flex; flex-direction: column; gap: 10px; }
-.gcard { display: flex; flex-direction: column; gap: 8px; border-top: 3px solid transparent;   /* a TorobChat-purple edge on AI-built cards */
+.gcard { display: flex; flex-direction: column; gap: 8px; border-top: 3px solid transparent;   /* a Torob-red edge on AI-built cards */
          background: linear-gradient(var(--card), var(--card)) padding-box, var(--ai) border-box; }
 .gen-title { font-weight: 700; font-size: 16px; line-height: 1.5; margin-top: -4px; }
 .gen-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ai-solid); }
@@ -344,18 +345,18 @@ table.compare td:first-child { color: var(--muted); }
 .alt { box-shadow: inset -4px 0 0 var(--warn), var(--shadow); }          /* the page is RTL: a bar on the inline-start edge */
 .alt .simbox { padding: 8px 10px; }
 
-/* composer: TorobChat's ask box — white, outlined, round, with a purple send button */
+/* composer: TorobChat's ask box — white, outlined, round, with a red send button */
 .composer { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: flex-end; gap: 8px;
             padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .field { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 8px; min-height: 44px; background: var(--card); border-radius: 24px;
          padding: 4px; padding-inline-start: 14px; box-shadow: inset 0 0 0 1px var(--line-2); transition: box-shadow .15s; cursor: text; }
-.field:focus-within { box-shadow: inset 0 0 0 1px var(--ai-solid), 0 0 0 3px rgba(124, 58, 237, .18); }
+.field:focus-within { box-shadow: inset 0 0 0 1px var(--ai-solid), 0 0 0 3px var(--ai-ring); }
 .field textarea { flex: 1; min-width: 0; height: 36px; max-height: 120px; font: inherit; font-size: 16px; color: var(--ink); line-height: 22px;
                   border: 0; background: transparent; padding: 7px 0; outline: none; resize: none; overflow-y: auto; }
                   /* one line is 36 px like the send button (field 44 px like the camera button); grows to ~5 lines */
 .field textarea:focus-visible { box-shadow: none; }
 .field textarea::placeholder { color: var(--faint); }
-/* send: an arrow inside the field — grey until there is something to send, then TorobChat's purple */
+/* send: an arrow inside the field — grey until there is something to send, then Torob red */
 #send { display: grid; place-items: center; flex: none; border: 0; background: var(--fill-2); color: #fff; border-radius: 50%;
         width: 36px; height: 36px; cursor: pointer; transition: transform .15s, background .2s; }
 #send svg { width: 19px; height: 19px; stroke-width: 2.6; }
