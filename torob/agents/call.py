@@ -190,9 +190,9 @@ def script(plan: CallPlan, truth: Truth, product_title: str, rng: random.Random)
     """Agent and shop lines. Every shop sentence restates a truth field — nothing else."""
     short = product_title.split("|")[0].strip()[:60]
     if plan.callback:   # we spoke a few minutes ago: no second introduction, no repeated questions
-        lines = [("agent", f"سلام دوباره؛ برای همون «{short}» زنگ زدم."), ("shop", "بله، بفرمایید.")]
+        lines = [("agent", f"سلام دوباره، تربچه هستم؛ برای همون «{short}» زنگ زدم."), ("shop", "بله، بفرمایید.")]
     else:
-        lines = [("agent", f"{rng.choice(_GREET)} «{short}» رو دارید؟")]
+        lines = [("agent", f"{rng.choice(_GREET)} تربچه هستم، دستیار خرید ترب؛ برای یه مشتری زنگ زدم. «{short}» رو دارید؟")]
         if not truth.answers:
             return lines
         if not truth.in_stock:

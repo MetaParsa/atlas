@@ -139,11 +139,23 @@ function syncDock() {
   $("#app").classList.toggle("reading", away && !busy);
 }
 
+// Three dots in an agent bubble while the answer is on its way; the first event of the answer replaces them.
+let typing = null;
+function showTyping() {
+  if ($("#start") || typing) return;   // a silent change on the start screen gets no bubble
+  typing = agentRow(el("div", { class: "bubble agent typing", role: "status", "aria-label": "تربچه داره می‌نویسه" },
+    el("i"), el("i"), el("i")));
+  stream.append(typing);
+  scrollEnd();
+}
+function hideTyping() { typing?.remove(); typing = null; }
+
 async function post(url, body) {
   if (busy) return false;
   setBusy(true);
   turn = { status: null, sawDone: false, block: null, failed: false };
   Radish.set("think");
+  showTyping();
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                                    body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -175,6 +187,7 @@ async function post(url, body) {
   } catch (e) {
     showError(e && e.name === "TimeoutError" ? "خیلی طول کشید؛ دوباره امتحان کن." : "اینترنت قطع شد؛ دوباره امتحان کن.");
   } finally {
+    hideTyping();
     if (turn.status) turn.status.classList.remove("busy");
     setBusy(false);
     if (turn.block) turn.block.scrollIntoView({ behavior: "smooth", block: "start" });   // show the top-ranked card
@@ -302,7 +315,7 @@ const handlers = {
       d.real_shop_note ? el("div", { class: "note", text: d.real_shop_note }) : null));
   },
   call_line(d) {
-    const who = d.who === "shop" ? callNames[d.call_id] || "فروشنده" : "دستیار";
+    const who = d.who === "shop" ? callNames[d.call_id] || "فروشنده" : "تربچه";
     $(`#call-${d.call_id}`)?.append(el("div", { class: `line ${d.who}` }, el("span", { class: "who", text: who }), d.text));
     scrollEnd();
   },
@@ -357,6 +370,7 @@ const handlers = {
 };
 const QUIET = new Set(["conditions", "status", "done"]);
 function handle(ev, d) {
+  if (ev !== "conditions" && ev !== "done") hideTyping();   // the answer has started
   if (!QUIET.has(ev)) leaveStart();          // a silent change (e.g. location before searching) keeps the start screen
   (handlers[ev] || (() => {}))(d);
 }
@@ -837,6 +851,7 @@ async function restoreHistory() {
   if (!evs.length) return false;
   leaveStart();
   replaying = true;
+  stream.classList.add("replay");             // a restored chat appears as it was, without replaying entrances
   turn = { status: null, sawDone: false, block: null, failed: false };
   for (const { event, data } of evs) {
     if (event === "user") turn = { status: null, sawDone: false, block: null, failed: false };
@@ -844,6 +859,8 @@ async function restoreHistory() {
     turn.status?.classList.remove("busy");
   }
   replaying = false;
+  for (const n of stream.children) n.classList.add("old");
+  stream.classList.remove("replay");
   turn = null;
   window.scrollTo({ top: document.body.scrollHeight });
   return true;
