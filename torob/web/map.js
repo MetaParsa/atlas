@@ -125,8 +125,9 @@
     v.route = L.layerGroup().addTo(v.map);
     return v;
   }
-  function hidePanel() { if (V) { V.panel.hidden = true; V.panel.replaceChildren(); V.route?.clearLayers(); } }
+  function hidePanel() { if (V) { V.panel.hidden = true; delete V.panel.dataset.rough; V.panel.replaceChildren(); V.route?.clearLayers(); } }
   function showPanel(...kids) {
+    delete V.panel.dataset.rough;
     V.panel.replaceChildren(el("button", { type: "button", class: "mv-x", "aria-label": "بستن", onclick: hidePanel }, "×"), ...kids);
     V.panel.hidden = false;
     V.panel.scrollTop = 0;
@@ -151,16 +152,17 @@
   // behind updates too) and the map redraws from where you are. Errors show in the map, not behind it.
   function locateMe(onMoved) {
     const say = (t) => (onMoved ? showPanel(el("div", { class: "mv-name", text: t })) : showError(t));
-    if (!navigator.geolocation) return say("مرورگرت مکان رو نمی‌ده.");
-    navigator.geolocation.getCurrentPosition(async (p) => {
-      const { latitude: lat, longitude: lng } = p.coords;
+    getFix(async ({ lat, lng, acc }) => {
       if (!inTehran(lat, lng)) return say("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره.");
       const c = { label: "مکان من", kind: "direct_call", tool: "set_location", args: { lat, lng, label: "مکان من", source: "gps" } };
       if (!onMoved) return act(c, "مکان من");
       showPanel(el("div", { class: "mv-name", text: "دارم فاصله‌ها رو از جایی که هستی حساب می‌کنم…" }));
       await chip(c, "مکان من");
-      onMoved();
-    }, () => say("اجازه‌ی مکان داده نشد؛ از نوار بالا یه محله انتخاب کن."), { timeout: 8000 });
+      await onMoved();
+      if (acc > ROUGH_M) showPanel(el("div", { class: "mv-name", text: roughNote(acc) }),
+        el("div", { class: "meta", text: "روی جای درستت روی نقشه بزن و «همین‌جا» رو انتخاب کن." }));
+      if (acc > ROUGH_M) V.panel.dataset.rough = "1";   // the next tap on the map is the correction, not «close»
+    }, (t) => say(t));
   }
   // Tap on an empty spot: offer to search from there.
   function offerHere(e) {
@@ -223,7 +225,7 @@
     v.tools.append(toolButton("pin", "مکان من", () => locateMe(moved)),
       toolButton("list", "همه", () => fit(v.map, [[c.lat, c.lng], ...d.points.map((p) => [p.lat, p.lon])])));
     legendFor("product");
-    v.map.on("click", (e) => (V.panel.hidden ? offerHere(e) : hidePanel()));
+    v.map.on("click", (e) => (V.panel.hidden || V.panel.dataset.rough ? offerHere(e) : hidePanel()));
     draw(true);
   }
   function shopPanel(p, d) {
@@ -274,8 +276,9 @@
     addHubs(v.map, v.layer, d.buildings, (b) => hubPanel(b, d));
     v.sub.textContent = `${fa(d.total)} فروشنده‌ی حضوری در تهران` + (d.buildings[0] ? ` · بیشترینش ${d.buildings[0].name}` : "");
     legendFor("hub");
-    v.tools.append(toolButton("list", "همه", () => fit(v.map, d.dots, 15)));
-    v.map.on("click", () => hidePanel());
+    v.tools.append(toolButton("pin", "مکان من", () => locateMe(() => openHub(h))),   // the bourse map redraws around you
+      toolButton("list", "همه", () => fit(v.map, d.dots, 15)));
+    v.map.on("click", (e) => (V.panel.dataset.rough ? offerHere(e) : hidePanel()));
     fit(v.map, d.buildings.length ? d.buildings.map((b) => [b.lat, b.lon]) : d.dots, 16);
     hubList(d);
   }

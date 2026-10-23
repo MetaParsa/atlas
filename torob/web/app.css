@@ -641,3 +641,5 @@ table.compare td:first-child { color: var(--muted); }
 /* «مسیریابی»: one row per maps app */
 .sheet a.opt { justify-content: flex-start; color: var(--ink); text-decoration: none; font-weight: 600; }
 .sheet a.opt svg { color: var(--red); }
+.start-gps { display: flex; width: fit-content; margin: 4px auto 14px; color: var(--red); border-color: var(--red); font-weight: 600; }
+.start-gps svg { color: var(--red); }

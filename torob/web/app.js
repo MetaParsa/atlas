@@ -193,6 +193,7 @@ async function post(url, body) {
     setBusy(false);
     if (turn.block) turn.block.scrollIntoView({ behavior: "smooth", block: "start" });   // show the top-ranked card
     else scrollEnd();
+    if (turn.askGeo) askLocationOnce();
   }
   return true;
 }
@@ -316,7 +317,7 @@ const handlers = {
     Radish.set("text");
   },
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); Radish.set("happy"); },
-  shop_cards(d) { hasResults = true; strip.hidden = false; shownProduct = d.product || null; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
+  shop_cards(d) { hasResults = true; strip.hidden = false; if (!replaying && d.items?.length) turn.askGeo = true; shownProduct = d.product || null; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
   call_start(d) {
     callNames[d.call_id] = d.shop_name || "فروشنده";
     Radish.set("call");
@@ -750,6 +751,7 @@ function setConditions(d) {
   $("#loc-label").textContent = (d.area || "تهران") + (d.located ? "" : " (پیش‌فرض؛ بزن تا عوض کنی)");
   if (hasResults) strip.hidden = false;      // R1: the strip appears with the first results, not before
   const set = (key, label, on) => { const b = $(`[data-cond="${key}"]`, strip); b.textContent = label; b.classList.toggle("on", on); };
+  $("#start-gps")?.toggleAttribute("hidden", !!d.located);   // the start screen's «مکان من»: gone once we know
   set("loc", d.located ? (d.area || "مکان من") : "مکانت کجاست؟", !!d.located);   // stays reachable when the row above hides
   const pay = (PAYMENTS.find((p) => p[0] === d.payment) || PAYMENTS[0])[1];
   set("radius", km(d.radius_km), d.radius_km !== 3);
@@ -797,8 +799,7 @@ function openRoute(to) {   // to = { lat, lng, name }
   });
   if (cond?.located && cond.center) return show(cond.center, cond.area || "جایی که گفتی");
   if (!navigator.geolocation) return show(null, "مکان فعلی گوشی (خود برنامه‌ی نقشه)");
-  navigator.geolocation.getCurrentPosition((p) => show({ lat: p.coords.latitude, lng: p.coords.longitude }, "مکان فعلی گوشی"),
-    () => show(null, "مکان فعلی گوشی (خود برنامه‌ی نقشه)"), { timeout: 6000, maximumAge: 300000 });
+  getFix(({ lat, lng }) => show({ lat, lng }, "مکان فعلی گوشی"), () => show(null, "مکان فعلی گوشی (خود برنامه‌ی نقشه)"));
 }
 
 function opts(list, current, apply) {
@@ -843,17 +844,41 @@ const SHEETS = {
 
 function pickLocation(args, label) {
   // Before any results, changing the area is silent: the start screen stays, only the chip label changes.
-  chip({ label, kind: "direct_call", tool: "set_location", args }, hasResults ? label : null);
+  return chip({ label, kind: "direct_call", tool: "set_location", args }, hasResults ? label : null);
 }
 
-function useGps() {
+// One place asks the browser for the location: the precise fix (GPS on a phone; on a PC, Wi-Fi can still be
+// a few hundred metres off), never a cached one. `ok({lat, lng, acc})` with the accuracy in metres.
+const GEO_OPTS = { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 };
+function getFix(ok, fail) {
+  if (!navigator.geolocation) return fail("مرورگرت مکان رو نمی‌ده؛ یه محله انتخاب کن.");
+  navigator.geolocation.getCurrentPosition((p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy || 0 }),
+    () => fail("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), GEO_OPTS);
+}
+const ROUGH_M = 600;   // a fix worse than this can put «نزدیک‌ترین» on the wrong street: say so and offer the map
+function roughNote(acc) {
+  const km = acc >= 1000 ? `${fa(String(Math.round(acc / 100) / 10).replace(".", "٫"))} کیلومتر` : `${fa(Math.round(acc / 50) * 50)} متر`;
+  return `مکانت رو حدودی پیدا کردم (تا حدود ${km} خطا)؛ اگه درست نیست، روی نقشه دقیقش کن.`;
+}
+
+function useGps(quiet = false) {   // quiet: asked by the app itself, so a «no» is just a no (the «کجایی؟» box stays)
   if (busy) return;
-  if (!navigator.geolocation) return showError("مرورگرت مکان رو نمی‌ده؛ یه محله انتخاب کن.");
-  navigator.geolocation.getCurrentPosition((p) => {
-    const { latitude: lat, longitude: lng } = p.coords;
-    if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return showError("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
-    pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
-  }, () => showError("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), { timeout: 8000 });
+  const fail = (t) => { if (!quiet) showError(t); };
+  getFix(async ({ lat, lng, acc }) => {
+    if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return fail("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
+    await pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
+    if (acc > ROUGH_M) stream.append(el("div", { class: "question" }, agentRow(el("div", { class: "bubble agent", text: roughNote(acc) })),
+      el("div", { class: "chips" }, el("button", { type: "button", class: "chip", onclick: pickOnMap }, icon("pin"), el("span", { text: "روی نقشه دقیقش کن" })))));
+  }, fail);
+}
+// The first time sellers appear (distance starts to matter) and the shopper hasn't said where they are, the browser
+// asks for the location once by itself; allowed, the sellers re-sort from there. Asked at most once per browser.
+const GEO_ASKED = "torob.geoAsked";
+async function askLocationOnce() {
+  if (cond?.located || !navigator.geolocation) return;
+  try { if (localStorage.getItem(GEO_ASKED)) return; localStorage.setItem(GEO_ASKED, "1"); } catch (_) {}
+  try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "denied") return; } catch (_) {}
+  useGps(true);
 }
 const pickOnMap = () => { if (!busy) maps().then((M) => M.pick()).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن.")); };
 
@@ -971,6 +996,7 @@ document.addEventListener("click", (e) => {
   const c = e.target.closest("[data-cond]"); if (c && SHEETS[c.dataset.cond]) SHEETS[c.dataset.cond]();
 });
 $("#loc").addEventListener("click", openLocation);
+{ const g = $("#start-gps"); if (g) { g.prepend(icon("pin")); g.addEventListener("click", () => useGps()); } }
 $("#plan-bar").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 $("#reset").addEventListener("click", () => {
   fetch("/api/reset", { method: "POST" }).catch(() => {}).finally(() => location.reload());
