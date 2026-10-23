@@ -127,3 +127,10 @@ def test_advisor_says_nothing_fits_instead_of_showing_rejects():
     fallback = advisor.pick_products(Need(product_type="هندزفری بلوتوثی", keywords=["هندزفری بلوتوثی"]),
                                      Conditions(radius_km=None), judge=lambda cands: None)
     assert fallback.picks                                     # judge unavailable: the rule-picked categories still answer
+
+
+def test_nothing_found_is_said_once():
+    s = SessionState()
+    events, _ = turn(s, text="ززقپچخ طلقثی")
+    kinds = [e for e, _ in events]
+    assert "product_cards" not in kinds and kinds.count("message") == 1

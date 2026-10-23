@@ -539,9 +539,11 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
     status = (f"{to_fa_digits(res.n_candidates)} مدل پیدا شد{matching} → {to_fa_digits(res.n_nearby)} تا نزدیکت فروشنده دارن"
               f" → {to_fa_digits(len(cards))} تا رو مقایسه کردم") if cards else "چیزی پیدا نشد"
     yield em.emit("status", {"text": status, "done": True})
-    yield em.emit("product_cards", {"block_id": "products", "replace": True, "items": [_card_with_button(c) for c in cards],
-                                    "compare_rows": res.compare_rows, "notes": res.notes,
-                                    "hub": _hub_line(res.picks[0].c.category) if cards else None})
+    if cards:   # with none, the note is said once below as the assistant's message, not also as an empty block
+        yield em.emit("product_cards", {"block_id": "products", "replace": True,
+                                        "items": [_card_with_button(c) for c in cards],
+                                        "compare_rows": res.compare_rows, "notes": res.notes,
+                                        "hub": _hub_line(res.picks[0].c.category)})
     if intro and len(cards) >= 2:   # generative UI: a comparison built for this shopper's own words
         said = " / ".join(h["content"] for h in state.history if h["role"] == "user")[-300:]
         yield from compose_ui(state, em, said, intro=True)
