@@ -1,0 +1,272 @@
+{
+ "summary": {
+  "run": "r3",
+  "n": 14,
+  "pass_rate": 0.357,
+  "groups": {
+   "clear": {
+    "n": 3,
+    "pass": 1,
+    "check_score": 0.903
+   },
+   "messy": {
+    "n": 3,
+    "pass": 2,
+    "check_score": 0.933
+   },
+   "budget": {
+    "n": 6,
+    "pass": 1,
+    "check_score": 0.809
+   },
+   "journey": {
+    "n": 2,
+    "pass": 1,
+    "check_score": 0.945
+   }
+  },
+  "p50_ms": 8070,
+  "p95_ms": 11485,
+  "card_p50_ms": 8075,
+  "card_p95_ms": 15617,
+  "tokens_in": 50937,
+  "tokens_out": 15461
+ },
+ "grades": [
+  {
+   "id": "clear-01",
+   "group": "clear",
+   "pass": false,
+   "check_score": 0.875,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'ایرپاد بلوتوثی انکر مدل Soundcore Libert']"
+     ],
+     "checks": 8
+    }
+   ]
+  },
+  {
+   "id": "clear-05",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "clear-06",
+   "group": "clear",
+   "pass": false,
+   "check_score": 0.833,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت مچی کاسیو زنانه مدل LTP-V006D-7B2UD', 'ساعت زنانه کاسیو مدل LTP-VT02BL-1AUDF']"
+     ],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "messy-02",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "messy-05",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "messy-07",
+   "group": "messy",
+   "pass": false,
+   "check_score": 0.8,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['اسپیکر بلوتوثی قابل حمل شیائومی مدل Esse', 'اسپیکر بلوتوثی قابل حمل هادرون مدل BTS10']"
+     ],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "budget-01",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-03",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['اسپیکر بلوتوثی قابل حمل یسیدو مدل YSW33', 'اسپیکر بلوتوثی قابل حمل الدینیو مدل BTS1']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-07",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت هوشمند گلوریمی مدل GC AIR', 'ساعت هوشمند کیسلکت مدل Calling Watch Kr2']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-08",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ماوس لاجیتک M90 باسیم', 'ماوس لاجیتک مدل M171 بی سیم']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-09",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['اسپیکر بلوتوثی قابل حمل شیائومی مدل Esse', 'اسپیکر بلوتوثی یسیدو مدل YSW30']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-10",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.857,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'هدفون بلوتوث انکر SoundCore Space Q45']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "journey-01",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 5
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-02",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.889,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت هوشمند کیسلکت مدل KS2 با نمایشگر AM', 'ساعت هوشمند گلوریمی مدل gs1 pro 2024']"
+     ],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 1
+    }
+   ]
+  }
+ ]
+}
