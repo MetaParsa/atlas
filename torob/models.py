@@ -48,6 +48,7 @@ class Need(BaseModel):
     brand_pref: list[str] = []
     named_product: str | None = None     # the user named a model → skip to shops (R7)
     missing_info: list[str] = []
+    price_pref: Literal["cheap", "any"] = "any"   # «ارزون باشه», «گرونه»، a basic need: the cheaper matches compete
 
     @model_validator(mode="before")
     @classmethod
@@ -55,7 +56,10 @@ class Need(BaseModel):
         """Models write `null` for «none»; an empty list/string means the same here and must not void the answer."""
         if isinstance(v, dict):
             v = {k: x for k, x in v.items() if not (x is None and k in ("product_type", "keywords", "category_hints",
-                                                                      "must_have", "brand_pref", "missing_info"))}
+                                                                      "must_have", "brand_pref", "missing_info",
+                                                                      "price_pref"))}
+            if v.get("price_pref") not in (None, "cheap", "any"):
+                v.pop("price_pref")
         return v
 
 
@@ -87,7 +91,7 @@ class AskQuestion(BaseModel):
 
 class RouterOutput(BaseModel):
     """The one JSON LLM call per free-text turn (R10); code routes on `intent`."""
-    intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "hub", "other"] = "other"
+    intent: Literal["need", "named_product", "refine", "call_shop", "ask_results", "hub", "show_shops", "other"] = "other"
     need: Need | None = None
     conditions_patch: dict = {}
     target: str = Field("", max_length=80)   # call_shop: which shown shop («اولی», «دومی», or part of its name)
@@ -123,6 +127,7 @@ class SessionState(BaseModel):
     plan: dict | None = None             # «برنامه‌ی خرید» card (S6)
     history: list[dict] = []             # last turns: {"role", "content"}
     just_changed: list[str] = []         # the conditions the user set most recently: relaxed only as a last resort
+    asked: list[str] = []                # the app's own questions already asked for the current need: not repeated
 
     def remember(self, role: str, content: str, keep: int = 10) -> None:
         self.history = (self.history + [{"role": role, "content": content}])[-keep:]

@@ -253,6 +253,9 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                      args={"budget_max": target}).model_dump(),
                 Chip(label="نه", kind="direct_call", tool="noop", args={}).model_dump()]}
 
+    if need.price_pref == "cheap" and len(pool) > 3:   # «ارزون باشه»: the cheaper half of the matches compete
+        cut = sorted(price[c.product_id] for c in pool)[max(2, len(pool) // 2)]
+        pool = [c for c in pool if price[c.product_id] <= cut]
     pool = pool[:40]   # keep relevance: only the best text matches compete
     avail = {c.product_id: stats.get(c.product_id, AreaStat()).sellers for c in pool}
     n = len(pool)

@@ -71,6 +71,24 @@ def hubs(categories: tuple[str, ...] = (), product_id: str | None = None) -> dic
     return {"total": total, "buildings": buildings, "areas": areas, "spread": spread}
 
 
+def locate(name: str) -> tuple[float, float] | None:
+    """A neighbourhood («تجریش»), street («ولیعصر») or passage the shopper names, placed by the dataset's own shops:
+    the median position of shops in that area, or whose address or building names it. None if fewer than 3."""
+    name = " ".join(str(name).split())[:40]
+    if len(name) < 2:
+        return None
+    con = store.get()
+    rows = con.execute("SELECT lat, lon FROM shops WHERE lat IS NOT NULL AND area = ?", (name,)).fetchall()
+    if len(rows) < 3:
+        like = f"%{name}%"
+        rows = con.execute("SELECT lat, lon FROM shops WHERE lat IS NOT NULL AND (address LIKE ? OR building LIKE ?) "
+                           "LIMIT 500", (like, like)).fetchall()
+    if len(rows) < 3:
+        return None
+    lats, lons = sorted(r["lat"] for r in rows), sorted(r["lon"] for r in rows)
+    return lats[len(lats) // 2], lons[len(lons) // 2]
+
+
 def hub_sentence(subject: str, h: dict) -> str:
     """«بورس هندزفری طبق داده‌ی ترب: پاساژ علاءالدین (۴۲ فروشنده از ۳۱۰ در تهران)، بعد چارسو (۲۱)؛ محله: جمهوری»."""
     if not h["total"]:

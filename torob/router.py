@@ -136,17 +136,19 @@ _ARR = {"type": "array", "items": _S}
 _null = lambda s: {"anyOf": [s, _N]}
 _NEED_FIELDS = {"product_type": _S, "keywords": _ARR, "category_hints": _ARR, "budget_min": _null({"type": "integer"}),
                 "budget_max": _null({"type": "integer"}), "use_case": _null(_S), "must_have": _ARR, "brand_pref": _ARR,
-                "named_product": _null(_S), "missing_info": _ARR}
+                "named_product": _null(_S), "missing_info": _ARR,
+                "price_pref": {"type": "string", "enum": ["cheap", "any"]}}
 ROUTER_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["intent", "need", "conditions_patch", "target", "message", "question"],
     "properties": {
-        "intent": {"type": "string", "enum": ["need", "named_product", "refine", "call_shop", "ask_results", "hub", "other"]},
+        "intent": {"type": "string", "enum": ["need", "named_product", "refine", "call_shop", "ask_results", "hub",
+                                              "show_shops", "other"]},
         "need": _null({"type": "object", "additionalProperties": False, "required": list(_NEED_FIELDS), "properties": _NEED_FIELDS}),
         "conditions_patch": {"type": "array", "items": {
             "type": "object", "additionalProperties": False, "required": ["key", "value"],
             "properties": {"key": {"type": "string", "enum": ["radius_km", "budget_min", "budget_max", "payment",
-                                                             "fast_delivery", "open", "arrive_at"]},
+                                                             "fast_delivery", "open", "arrive_at", "area"]},
                            "value": _null(_S)}}},
         "target": _S, "message": _S,
         "question": _null({"type": "object", "additionalProperties": False, "required": ["text", "options", "wait"],
@@ -186,11 +188,14 @@ def _router_output(data: dict) -> RouterOutput:
 
 def _on_screen(state: SessionState) -> str:
     """What the shopper is looking at, for the router: «کدومش بهتره؟» is about these cards, not a new search."""
+    cost = lambda n: f" ({format_price_short(n)} تومان)" if n else ""
     if state.last_block_kind == "shops" and state.shops_shown:
         product = next((p["title"] for p in state.products_shown if p["product_id"] == state.selected_product_id), "")
-        return f"الان روی صفحه: فروشنده‌های «{product}»: " + "، ".join(s["name"] for s in state.shops_shown[:5])
+        return f"الان روی صفحه: فروشنده‌های «{product}»: " + "، ".join(s["name"] + cost(s["price_min"])
+                                                                       for s in state.shops_shown[:5])
     if state.last_block_kind == "products" and state.products_shown:
-        return "الان روی صفحه: کارت‌های محصول: " + "، ".join(f"«{p['title']}»" for p in state.products_shown[:4])
+        return "الان روی صفحه: کارت‌های محصول: " + "، ".join(f"«{p['title']}»" + cost(p["price_min"])
+                                                           for p in state.products_shown[:4])
     return "الان روی صفحه نتیجه‌ای نیست."
 
 
@@ -255,8 +260,17 @@ def apply_patch(state: SessionState, patch: dict) -> list[str]:
     changed = []
     allowed = set(Conditions.model_fields) - {"center"}
     for k, v in patch.items():
+        if k == "area":   # «نزدیک ولیعصر»: the search moves there, placed by the dataset's own shops
+            spot = places.locate(v) if isinstance(v, str) else None
+            if spot:
+                state.conditions = state.conditions.model_copy(update={"center": Location(
+                    lat=spot[0], lng=spot[1], label=" ".join(v.split())[:40], source="area")})
+                changed.append("center")
+            continue
         if k not in allowed:
             continue
+        if k in ("budget_min", "budget_max") and isinstance(v, (int, float)) and 0 < v < 10_000:
+            v = int(v * 1_000_000) if v < 50 else int(v * 1_000)   # «۲ تومن» = 2M, «۵۰۰ تومن» = 500k (Tehran slang)
         if k == "arrive_at":
             if v is None:   # «الان راه می‌افتم»
                 if state.conditions.arrive_at is not None:
@@ -592,7 +606,10 @@ def _relevance_judge(state: SessionState, em: Emitter):
     if em.llm is None or not getattr(em.llm, "enabled", False):
         return None
     said = [h["content"] for h in state.history if h.get("role") == "user"][-2:]
-    want = " / ".join(said) or (state.need.named_product or state.need.product_type if state.need else "")
+    want = " / ".join(said)
+    if state.need:   # the router's reading too: «airpods pro 2» against Persian titles needs «ایرپاد پرو ۲» as well
+        meant = " · ".join(x for x in (state.need.named_product, state.need.product_type, *state.need.keywords[:2]) if x)
+        want = f"{want} (یعنی: {meant})" if want else meant
     return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
 
 
@@ -644,7 +661,8 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
         yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
     elif not res.in_area and state.conditions.radius_km is not None:
         yield from _coverage_offer(state, em)
-    elif ask and res.question:
+    elif ask and res.question and res.question["text"] not in state.asked:   # skipped once: don't nag every turn
+        state.asked.append(res.question["text"])
         state.remember("assistant", res.question["text"])
         yield em.emit("question", res.question)
 
@@ -876,7 +894,12 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
     if changed := apply_patch(state, patch):
         state.just_changed = _condition_fields(changed)
         yield em.emit("conditions", conditions_event(state))
+    if isinstance(patch.get("area"), str) and "center" not in changed:   # a place the dataset has no shops around
+        yield say(state, em, f"«{patch['area'][:40]}» رو تو داده‌ی ترب پیدا نکردم؛ از «{state.conditions.center.label}» "
+                             f"نشونت می‌دم. می‌تونی از نوار بالا محدوده رو عوض کنی.")
     if out.intent in ("need", "named_product") and out.need:
+        if not state.need or normalize_fa(out.need.product_type) != normalize_fa(state.need.product_type):
+            state.asked = []   # a different product may ask its own questions again
         state.need = out.need
         q = out.question if out.intent == "need" else None
         if out.message and not q:
@@ -890,11 +913,20 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield ask_with_options(state, em, q)
     elif out.intent == "refine":
         if state.need and state.last_block_kind in ("products", "shops"):   # the cards must reflect the new conditions
+            if out.message:   # «قسطی دارن؟» → say what changed, so a question doesn't look ignored
+                yield say(state, em, out.message)
             yield from rerun_latest(state, em)
         else:
             yield say(state, em, out.message or "شرایط رو عوض کردم.")
+    elif out.intent == "show_shops":
+        yield from _open_shops(state, em, f"{out.target} {text}")
     elif out.intent == "call_shop":
         if not state.shops_shown:
+            if state.products_shown and state.last_block_kind == "products":   # «اولی رو بپرس»: its sellers first
+                yield from _open_shops(state, em, f"{out.target} {text}")
+                if state.shops_shown:
+                    yield from _which_shop(state, em)
+                return
             yield say(state, em, "اول فروشنده‌ها رو پیدا کنیم؛ بعد برات زنگ می‌زنم.")
             return
         shop = _resolve_shop(state, f"{out.target} {text}")
@@ -941,6 +973,39 @@ def _resolve_shop(state: SessionState, target: str) -> dict | None:
     if scored and scored[0][0] > 0 and (len(scored) == 1 or scored[0][0] > scored[1][0]):
         return scored[0][1]
     return shown[0] if len(shown) == 1 else None
+
+
+def _resolve_product(state: SessionState, target: str) -> str | None:
+    """The shown product card the shopper means: «اولی/دومی» or the best name match; the only card if there is one."""
+    shown = state.products_shown
+    if not shown:
+        return None
+    t = normalize_fa(target)
+    if m := _ORDINAL.search(t):
+        i = _ORDINAL_INDEX[m.group(1)]
+        return shown[i]["product_id"] if i < len(shown) else None
+    words = set(t.split())
+    scored = sorted(((sum(w in words for w in normalize_fa(p["title"]).split() if len(w) > 2), p) for p in shown),
+                    key=lambda x: -x[0])
+    if scored[0][0] > 0 and (len(scored) == 1 or scored[0][0] > scored[1][0]):
+        return scored[0][1]["product_id"]
+    return shown[0]["product_id"] if len(shown) == 1 else None
+
+
+def _open_shops(state: SessionState, em: Emitter, target: str) -> Iterator[str]:
+    """Sellers of the product card the shopper points at, or a question with one button per card."""
+    pid = _resolve_product(state, target)
+    if pid and pid in state.product_ids:
+        _select_product(state, pid)
+        yield from show_shops(state, em)
+        return
+    if not state.products_shown:
+        yield say(state, em, "اول بگو دنبال چی هستی تا مدل‌ها و فروشنده‌هاش رو پیدا کنم.")
+        return
+    chips = [Chip(label=p["title"][:40], kind="direct_call", tool="show_shops", args={"product_id": p["product_id"]}).model_dump()
+             for p in state.products_shown]
+    state.remember("assistant", "فروشنده‌های کدوم مدل؟")
+    yield em.emit("question", {"text": "فروشنده‌های کدوم مدل؟", "chips": chips})
 
 
 def _which_shop(state: SessionState, em: Emitter) -> Iterator[str]:

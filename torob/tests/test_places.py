@@ -112,3 +112,25 @@ def test_after_a_bourse_question_the_judge_hears_the_item_not_the_place():
     s = SessionState()
     turn(s, text="بورس هندزفری کجاست؟")
     assert [h["content"] for h in s.history if h["role"] == "user"] == ["هندزفری"]
+
+
+@needs_db
+def test_places_the_shopper_names_move_the_search():
+    from torob.router import apply_patch
+    s = SessionState()
+    assert apply_patch(s, {"area": "تجریش"}) == ["center"] and s.conditions.center.lat > 35.78
+    assert apply_patch(s, {"area": "جایی که نیست"}) == []                       # unknown: nothing moves
+    assert apply_patch(s, {"budget_max": 500}) == ["budget_max"] and s.conditions.budget_max == 500_000   # «۵۰۰ تومن»
+    apply_patch(s, {"budget_max": 2})
+    assert s.conditions.budget_max == 2_000_000                               # «۲ تومن»
+
+
+@needs_db
+def test_cheap_preference_brings_cheaper_picks():
+    from torob.agents import advisor
+    from torob.models import Need
+    base = Need(product_type="ساعت هوشمند", keywords=["ساعت هوشمند"])
+    any_ = advisor.pick_products(base, Conditions())
+    cheap = advisor.pick_products(base.model_copy(update={"price_pref": "cheap"}), Conditions())
+    top = lambda r: max(p.price for p in r.picks)
+    assert cheap.picks and top(cheap) <= top(any_)

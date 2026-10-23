@@ -363,8 +363,8 @@ def admin() -> HTMLResponse:
     errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
                    for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"
     from torob.router import ROUTER_FALLBACKS
-    errs += "".join(f"<tr><td>{e(x['at'])}</td><td>فهم پیام به قواعد برگشت: {e(x['error'])}</td><td>{e(x['reply'])}</td></tr>"
-                    for x in list(ROUTER_FALLBACKS)[::-1])
+    errs += "".join(f"<tr><td>{e(x['at'])}</td><td>فهم پیام به قواعد برگشت</td><td>{e(x['error'].split(':')[0])}</td></tr>"
+                    for x in list(ROUTER_FALLBACKS)[::-1])   # the kind of failure only: never what a shopper typed
     body = "".join(f"<h2>{e(t)}</h2><table>{rows(items)}</table>" for t, items in sections)
     page = f"""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>پشت صحنه</title>
@@ -400,8 +400,21 @@ def refine(body: RefineIn, request: Request, sid: str | None = Cookie(default=No
     return _turn_response(request, sid, chip=chip)
 
 
+def same_origin(request: Request) -> bool:
+    """A browser sends Origin on every POST: another website can't drive a visitor's session (and spend its tokens).
+    No Origin (curl, server-to-server) is allowed; the cookie still ties a turn to its own session."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    from urllib.parse import urlsplit
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    return urlsplit(origin).netloc.lower() == host.split(",")[0].strip().lower()
+
+
 def _turn_response(request: Request, sid: str | None, text: str | None = None, chip: Chip | None = None,
                    bubble: str | None = None, image: str | None = None, thumb: str | None = None):
+    if not same_origin(request):
+        return JSONResponse({"error": "این درخواست از سایت دیگری آمده."}, status_code=403)
     if not chat_limit.allow(client_ip(request)):
         return JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
     adb = appdb()

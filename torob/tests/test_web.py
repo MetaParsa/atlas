@@ -214,3 +214,12 @@ def test_personal_api_answers_are_never_cached(client):
         assert client.get(path).headers["cache-control"] == "private, no-store"
     meta = (WEB / "radish-sprites.js").read_text(encoding="utf-8")
     assert '"sheet":"/static/radish-sheet.png?v=' in meta   # the CDN caches /static, so the sheet URL carries its hash
+
+
+def test_another_website_cannot_drive_a_session():
+    from fastapi.testclient import TestClient
+    from torob import app as app_mod
+    c = TestClient(app_mod.app)
+    r = c.post("/api/chat", json={"text": "سلام"}, headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert c.post("/api/refine", json={"conditions": {}}, headers={"Origin": "https://evil.example"}).status_code == 403
