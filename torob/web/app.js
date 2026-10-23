@@ -502,8 +502,7 @@ function productImage(p) {
 
 function productBlock(d) {
   const items = d.items || [];
-  const block = el("section");
-  (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
+  const block = el("section");   // the advisor's notes stay out of sight: the cards and the chat say what matters
   if (!items.length) return block;
   block.append(el("div", { class: "block-h" }, el("h3", { text: "مدل‌های پیشنهادی" }),
     el("span", {}, `${fa(items.length)} مدل`, items.length > 1 ? el("span", { class: "hint", text: "، بکش برای بقیه" }) : null)));
@@ -996,7 +995,9 @@ document.addEventListener("click", (e) => {
   const c = e.target.closest("[data-cond]"); if (c && SHEETS[c.dataset.cond]) SHEETS[c.dataset.cond]();
 });
 $("#loc").addEventListener("click", openLocation);
-{ const g = $("#start-gps"); if (g) { g.prepend(icon("pin")); g.addEventListener("click", () => useGps()); } }
+{ const g = $("#start-gps"); if (g) { g.prepend(icon("pin")); g.addEventListener("click", () => useGps());
+    // already allowed: no need to offer it (the location is taken when it matters)
+    navigator.permissions?.query({ name: "geolocation" }).then((p) => { if (p.state === "granted") g.hidden = true; }).catch(() => {}); } }
 $("#plan-bar").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 $("#reset").addEventListener("click", () => {
   fetch("/api/reset", { method: "POST" }).catch(() => {}).finally(() => location.reload());

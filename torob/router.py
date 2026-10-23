@@ -992,6 +992,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
     patch = dict(out.conditions_patch)
     if out.need and out.need.budget_max and "budget_max" not in patch:
         patch["budget_max"] = out.need.budget_max
+    if out.need and out.need.budget_min and "budget_min" not in patch:   # «بالای ۱۵۰ میلیون»: a floor, not a ceiling
+        patch["budget_min"] = out.need.budget_min
     if changed := apply_patch(state, patch):
         state.just_changed = _condition_fields(changed)
         yield em.emit("conditions", conditions_event(state))

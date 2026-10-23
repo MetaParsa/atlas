@@ -304,3 +304,16 @@ def test_a_listing_that_claims_to_be_the_item_but_is_priced_like_a_part_is_hidde
         return relevance.Judgement(kept, fakes=[fake.title])
     res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
     assert any("قطعه" in n and "نشونش ندادم" in n for n in res.notes)
+
+
+def test_a_budget_floor_keeps_cheaper_models_out():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from torob.agents import advisor
+    from torob.models import Conditions
+    from torob.router import rule_route
+    need = rule_route("گوشی سامسونگ").need
+    res = advisor.pick_products(need, Conditions(radius_km=None, budget_min=100_000_000))
+    assert res.picks and all(p.price >= 95_000_000 for p in res.picks)

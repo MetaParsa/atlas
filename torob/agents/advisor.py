@@ -348,6 +348,13 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                      args={"budget_max": target}).model_dump(),
                 Chip(label="نه", kind="direct_call", tool="noop", args={}).model_dump()]}
 
+    if cond.budget_min:   # «بالای ۱۵۰ میلیون»: nothing below the floor (a little slack for prices that just moved)
+        above = [c for c in pool if price[c.product_id] >= cond.budget_min * 0.95]
+        if above:
+            pool = above
+        else:
+            notes.append(f"چیزی بالای {format_price_short(cond.budget_min)} پیدا نشد؛ گرون‌ترین‌ها رو آوردم.")
+            pool = sorted(pool, key=lambda c: -price[c.product_id])[:3]
     if need.price_pref == "cheap" and len(pool) > 3:   # «ارزون باشه»: the cheaper half of the matches compete
         cut = sorted(price[c.product_id] for c in pool)[max(2, len(pool) // 2)]
         pool = [c for c in pool if price[c.product_id] <= cut]

@@ -1225,3 +1225,10 @@ scenarios:
   - {must_show: [question], must_not: [products]}
   - {must_show_any: [products, question]}
   ideal: "اول بپرسد برای چه کاری (روزمره، بازی، عکاسی، ساده) یا چه بودجه‌ای؛ بعد گوشی‌های مناسب همان کاربرد، نه سه نوکیای ساده."
+- id: budget-floor
+  group: budget
+  persona: کاربر واقعی
+  turns: ["گوشی های با قیمت بالای ۱۵۰ میلیون تومان بهم نشون بده."]
+  expect:
+  - {must_show_any: [products, question]}
+  ideal: "فقط گوشی‌های بالای ۱۵۰ میلیون، بدون یادداشت‌های فنی."

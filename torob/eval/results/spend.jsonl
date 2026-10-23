@@ -15,3 +15,4 @@
 {"run": "fit1", "kind": "app", "in": 29354, "out": 3983, "calls": 8, "cache_read": 12242, "cache_write": 6121, "usd": 0.1163, "at": "19:43"}
 {"run": "fake1", "kind": "app", "in": 10712, "out": 1751, "calls": 3, "cache_read": 6121, "cache_write": 0, "usd": 0.0402, "at": "19:59"}
 {"run": "vague1", "kind": "app", "in": 22931, "out": 3685, "calls": 8, "cache_read": 18975, "cache_write": 6325, "usd": 0.1023, "at": "20:03"}
+{"run": "floor1", "kind": "app", "in": 10655, "out": 1711, "calls": 3, "cache_read": 6325, "cache_write": 0, "usd": 0.0397, "at": "20:06"}
