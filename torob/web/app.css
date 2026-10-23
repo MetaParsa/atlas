@@ -643,3 +643,9 @@ table.compare td:first-child { color: var(--muted); }
 .sheet a.opt svg { color: var(--red); }
 .start-gps { display: flex; width: fit-content; margin: 4px auto 14px; color: var(--red); border-color: var(--red); font-weight: 600; }
 .start-gps svg { color: var(--red); }
+/* AI-built filters: on = filled, offered = outlined with «+» */
+.filters-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 2px; }
+.filters-row .fh { font-size: 13px; color: var(--muted); font-weight: 600; }
+.fchip .fx { font-weight: 700; opacity: .8; }
+.fchip.on { color: var(--navy-ink); background: var(--navy); border-color: var(--navy); }
+.filters-row:not(.live) { opacity: .55; }

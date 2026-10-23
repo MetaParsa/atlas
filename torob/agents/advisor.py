@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 from core.text import format_price_short, normalize_fa, to_fa_digits
 from torob import search, store
+from torob.agents import filters as filter_rules
 from torob.agents.shops import WALK_MAX_M
 from torob.logic.geo import bbox, estimate_minutes, haversine_m
 from torob.models import Chip, Conditions, Need
@@ -278,17 +279,31 @@ def _affordable_first(reps: list[search.Candidate], budget: int | None, cheap: b
     return first + [c for c in head if c.product_id not in seen] + tail
 
 
-def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
-    """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model."""
+def pick_products(need: Need, cond: Conditions, judge=None, filters: list[dict] | None = None) -> AdvisorResult:
+    """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model.
+    `filters` (agents/filters.py): brand filters are applied here over every candidate; spec filters are answered
+    by the judge product by product, and a «must» one the product fails keeps it off the cards."""
+    filters = filters or []
     cands, cats = search.candidates(need, wide=judge is not None, budget=cond.budget_max)   # a judge sees a wider net (the model's categories too)
+    if judge and any(f["kind"] == "spec" for f in filters) and cats:   # research the category, not just the text hits
+        seen = {c.product_id for c in cands}
+        cands += [c for c in search.browse(cats[:2], 120, cond.budget_min, cond.budget_max) if c.product_id not in seen]
     notes: list[str] = []
     if not cands:
         return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم."], [], None, 0, False)
 
     reps, same_title = _dedupe(cands)
-    reps = _named_first(need, _brand_filter(need, reps, notes))
+    brands = [f["value"] for f in filters if f["kind"] == "brand"]
+    if brands:   # an AI-built brand filter: exactly these brands (the shopper removes the chip to widen)
+        reps = [c for c in reps if filter_rules.brand_ok(c, brands)] or reps
+    else:
+        reps = _brand_filter(need, reps, notes)
+    reps = _named_first(need, reps)
     if judge:
         reps = _affordable_first(reps, cond.budget_max, need.price_pref == "cheap")
+    if judge and any(f["kind"] == "spec" for f in filters):   # half text matches, half the category's best sellers
+        text, browsed = [c for c in reps if c.rank < 10_000], [c for c in reps if c.rank >= 10_000]
+        reps = text[:60] + browsed[:60] + text[60:] + browsed[60:]
     n_found, n_matching, copies, steps, fit = len(reps), None, set(), [], {}
     if judge:
         j = judge(reps)
@@ -299,7 +314,17 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                                  [], None, 0, False, n_candidates=n_found, n_matching=0)
         else:             # only the products that are the thing asked for compete
             reps, copies, n_matching, steps = j.kept, j.copies | _priced_like_copies(j.kept), len(j.kept), j.budget_steps
-            fit = j.fit
+            fit = dict(j.fit)
+            musts = [f["id"] for f in filters if f["kind"] == "spec" and f["must"]]
+            if j.passes:
+                sure = [c for c in reps if all(j.passes.get(c.product_id, {}).get(fid) is True for fid in musts)]
+                passing = [c for c in reps if not any(j.passes.get(c.product_id, {}).get(fid) is False for fid in musts)]
+                if musts and len(sure) >= 3:   # enough that clearly meet every must-have: «not written» doesn't compete
+                    reps = sure
+                elif passing:
+                    reps = passing
+                for pid, ans in j.passes.items():   # each filter it meets lifts it; one it fails pulls it down
+                    fit[pid] = fit.get(pid, 1) + sum(0.5 for v in ans.values() if v is True) - sum(0.5 for v in ans.values() if v is False)
             if j.fakes:   # «گوشی موبایل … Redmi Note 10» at a part's price: not shown, and the shopper is told why
                 short = j.fakes[0].split("|")[0].strip()[:45]
                 more = f" و {to_fa_digits(len(j.fakes) - 1)} آگهی دیگه" if len(j.fakes) > 1 else ""
@@ -318,13 +343,17 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
 
     # A1 seller floor on availability alone: ≥ 3 nearby, relax to 2, then 1; nobody nearby → all Tehran.
     in_area, floor_used, pool = True, SELLER_FLOOR, []
+    within = reps
+    if budget:   # the budget comes before «sold nearby»: a fitting model across town beats a 4× pricier one next door
+        fitting = [c for c in reps if c.price_median and c.price_median <= budget * (1 + OVER_BUDGET_SLACK)]
+        within = fitting or reps
     for floor in (SELLER_FLOOR, 2, 1):
-        pool = [c for c in reps if stats.get(c.product_id, AreaStat()).sellers >= floor]
+        pool = [c for c in within if stats.get(c.product_id, AreaStat()).sellers >= floor]
         if len(pool) >= 2 or (floor == 1 and pool):
             floor_used = floor
             break
     if not pool:
-        in_area, pool = False, reps
+        in_area, pool = False, within
         notes.append("نزدیک تو فروشنده‌ای برای این ثبت نشده؛ این‌ها از کل تهرانه.")
 
     price = {c.product_id: (typical(c) if in_area else c.price_median or 0) for c in pool}
@@ -384,11 +413,15 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     keys = (lambda c: -value_score(c), lambda c: (price[c.product_id], c.rank), lambda c: (-avail[c.product_id], c.rank))
     if need.price_pref == "cheap":   # «ارزون‌ترش»: every slot goes to the cheapest matches, not «most sellers»
         keys = (lambda c: (price[c.product_id], c.rank),) * 3
+    mixed = not need.brand_pref and not brands and not need.named_product   # no brand asked: show the range of makers
+    brand_of = lambda c: normalize_fa(c.brand or "") or None
     for key in keys:
-        for c in sorted(pool, key=key):
-            if all(not search.near_duplicate(c.title_norm, x.title_norm) for x in chosen):
-                chosen.append(c)
-                break
+        ranked = [c for c in sorted(pool, key=key) if all(not search.near_duplicate(c.title_norm, x.title_norm) for x in chosen)]
+        if not ranked:
+            continue
+        taken = {brand_of(x) for x in chosen}
+        other = next((c for c in ranked[:8] if brand_of(c) not in taken), None) if mixed else None
+        chosen.append(other or ranked[0])   # another maker when one is close to the top for this slot
     picks = [Pick(c, "other", stats.get(c.product_id, AreaStat()), in_area, whole_city,
                   same_title_ids=same_title.get(c.product_id, [])) for c in chosen]
     _label(picks)

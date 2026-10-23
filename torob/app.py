@@ -267,7 +267,8 @@ def live_product(product_id: str, request: Request) -> dict:
     """Today's lowest price for a dataset product on torob.com (cached, polite; see torob/live.py)."""
     if not live_limit.allow(client_ip(request)):
         return {"status": "busy"}
-    return live().product(product_id, _product_title(product_id))
+    row = store.get().execute("SELECT price_median FROM products WHERE product_id = ?", (product_id,)).fetchone()
+    return live().product(product_id, _product_title(product_id), row["price_median"] if row else None)
 
 
 @app.get("/api/live/shops/{product_id}")

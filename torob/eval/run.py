@@ -158,6 +158,15 @@ def run_scenario(client, adb, sc: dict, defaults: dict, areas: list[dict]) -> di
                 history.append([])
                 continue
             body = {"chip": chip, "bubble": chip["label"]}
+        elif m := re.match(r"chip(\d+):\s*toggle", raw):   # tap the N-th active filter chip (× / +)
+            ev = next((d for e, d in reversed(history[-1] if history else []) if e == "filters"), None)
+            fs = (ev or {}).get("active") or []
+            n = int(m.group(1))
+            if n >= len(fs):
+                turns_out.append({"input": raw, "skipped": "filter not on screen", "events": [], "ms": 0})
+                history.append([])
+                continue
+            body = {"chip": fs[n]["chip"], "bubble": None}
         elif m := re.match(r"card(\d+):\s*(.*)", raw):
             items = latest_cards(history)
             n = int(m.group(1)) - 1

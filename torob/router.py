@@ -6,6 +6,7 @@ returns unusable JSON or the budget is spent.
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 import time
 from collections import Counter, deque
 from collections.abc import Callable, Iterator
@@ -25,6 +26,7 @@ from torob.agents import advisor
 from torob.agents import call as call_engine
 from torob.agents import compose as composer
 from torob.agents import places
+from torob.agents import filters as filter_builder
 from torob.agents import followup
 from torob.agents import relevance
 from torob import live as live_torob
@@ -690,7 +692,10 @@ def _relevance_judge(state: SessionState, em: Emitter):
     if state.need:   # the router's reading too: «airpods pro 2» against Persian titles needs «ایرپاد پرو ۲» as well
         meant = " · ".join(x for x in (state.need.named_product, state.need.product_type, *state.need.keywords[:2]) if x)
         want = f"{want} (یعنی: {meant})" if want else meant
-    return lambda cands: relevance.keep(em.llm, want, cands, em.session_id)
+    dropped = [f["label"] for f in state.filter_suggest if f.get("dropped")]
+    if dropped:   # the shopper tapped × on these: their own earlier words no longer require them
+        want += " — کاربر این شرط‌ها را برداشت و دیگر لازم نیست: " + "، ".join(dropped)
+    return lambda cands: relevance.keep(em.llm, want, cands, em.session_id, criteria=state.filters)
 
 
 def ask_with_options(state: SessionState, em: Emitter, q) -> str:
@@ -703,14 +708,98 @@ def ask_with_options(state: SessionState, em: Emitter, q) -> str:
     return em.emit("question", {"text": q.text, "chips": [c.model_dump() for c in chips]})
 
 
+_EARLY = ThreadPoolExecutor(max_workers=4, thread_name_prefix="filters")
+
+
+def start_filters_early(llm: LLMClient, state: SessionState, text: str, session_id: str):
+    """Start building filters while the message is still being understood: a quick rule reading of the product gives
+    the category; if the model's reading lands in the same category, its filters are ready (saves a model round trip)."""
+    if not getattr(llm, "enabled", False):
+        return None
+    guess = rule_route(text, allow_ask=False)
+    if guess.intent not in ("need", "named_product") or not guess.need:
+        return None
+    cats = tuple(search.candidates(guess.need)[1][:2])
+    if not cats:
+        return None
+    said = [h["content"] for h in state.history if h.get("role") == "user"] + [text]
+    current = list(state.filters)
+    return cats, _EARLY.submit(filter_builder.build, llm, said, guess.need.product_type, cats, current, session_id)
+
+
+def build_filters(state: SessionState, em: Emitter, early=None) -> None:
+    if em.llm is None or not getattr(em.llm, "enabled", False) or not state.need:
+        return
+    _, cats = search.candidates(state.need, wide=True)
+    cats = tuple(cats[:2])
+    got = None
+    if early and early[0][:1] == cats[:1]:   # the same category the early build used: take its answer
+        try:
+            got = early[1].result(timeout=15)
+        except Exception:
+            got = None
+    if got is None:
+        said = [h["content"] for h in state.history if h.get("role") == "user"]
+        got = filter_builder.build(em.llm, said, state.need.product_type, cats, state.filters, em.session_id)
+    if got is not None:
+        state.filters, state.filter_suggest = got
+
+
+def filters_event(state: SessionState) -> dict:
+    chip = lambda f: {"id": f["id"], "label": f["label"], "must": f["must"],
+                      "chip": Chip(label=f["label"], kind="direct_call", tool="toggle_filter", args={"id": f["id"]}).model_dump()}
+    return {"active": [chip(f) for f in state.filters], "suggest": [chip(f) for f in state.filter_suggest]}
+
+
+class ToggleFilterArgs(DirectTool):
+    id: str = Field(max_length=8)
+
+
+@direct("toggle_filter", ToggleFilterArgs)
+def _chip_toggle_filter(state: SessionState, em: Emitter, args: ToggleFilterArgs) -> Iterator[str]:
+    """× on an active filter turns it off (it stays offered with «+»); «+» on an offered one turns it on."""
+    on = next((f for f in state.filters if f["id"] == args.id), None)
+    off = next((f for f in state.filter_suggest if f["id"] == args.id), None)
+    if on:
+        state.filters = [f for f in state.filters if f["id"] != args.id]
+        state.filter_suggest = [{**on, "dropped": True}, *state.filter_suggest][:6]
+        if on["kind"] == "brand" and state.need:   # «سامسونگ ×»: the search itself widens too, not just the filter
+            names = {normalize_fa(x).lower() for x in [on["value"], *state.need.brand_pref]}
+            names |= {k for k, v in search.BRAND_ALIASES.items() if v in names} | {v for k, v in search.BRAND_ALIASES.items() if k in names}
+            strip = lambda t: " ".join(w for w in str(t).split() if normalize_fa(w).lower() not in names)
+            kws = [strip(k) for k in state.need.keywords]
+            state.need = state.need.model_copy(update={
+                "brand_pref": [], "keywords": [k for k in kws if k] or [state.need.product_type],
+                "product_type": strip(state.need.product_type) or state.need.product_type,
+                "named_product": None})
+    elif off:
+        state.filter_suggest = [f for f in state.filter_suggest if f["id"] != args.id]
+        state.filters = [*state.filters, {k: v for k, v in off.items() if k != "dropped"}]
+    else:
+        yield em.emit("error", {"text": "این فیلتر دیگه نیست."})
+        return
+    if state.need:
+        yield from show_products(state, em, ask=False)
+
+
 WIDE_SPAN = 20   # judged matches whose prices run 20× from the cheap end to the dear end: ask before showing models
 
 
-def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: bool = False) -> Iterator[str]:
-    """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4)."""
+def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: bool = False,
+                  build: bool = False, early=None) -> Iterator[str]:
+    """Step 1: the advisor's 2–3 picks (or the one named model), with counts in the status line (R4).
+    `build`: a new request in the shopper's own words: first turn them into filters (shown at once, before the
+    research that uses them)."""
     yield em.emit("conditions", conditions_event(state))   # the strip appears with the first results (R1)
-    yield em.emit("status", {"text": "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
-    res = advisor.pick_products(state.need, state.conditions, judge=_relevance_judge(state, em))
+    if build and em.llm is not None and getattr(em.llm, "enabled", False):
+        yield em.emit("status", {"text": "دارم از حرفات فیلتر می‌سازم…", "done": False})
+        build_filters(state, em, early)
+        if state.filters or state.filter_suggest:
+            yield em.emit("filters", filters_event(state))
+    spec_on = any(f["kind"] == "spec" for f in state.filters)
+    yield em.emit("status", {"text": "دارم مدل‌های این دسته رو یکی‌یکی با فیلترهات می‌سنجم…" if spec_on
+                             else "دارم مدل‌ها رو مقایسه می‌کنم…", "done": False})
+    res = advisor.pick_products(state.need, state.conditions, judge=_relevance_judge(state, em), filters=state.filters)
     if res.named:
         card = res.named.card()
         state.product_ids, state.last_block_kind = [card["product_id"]], "products"
@@ -725,7 +814,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
         return
     n = state.need
     vague = not (state.conditions.budget_max or n.use_case or n.brand_pref or n.named_product or n.must_have
-                 or n.price_pref == "cheap")
+                 or n.price_pref == "cheap" or state.filters)
     q = res.question
     if ask and vague and res.n_matching is not None and res.price_span >= WIDE_SPAN and q and q["text"] not in state.asked:
         # «میخوام گوشی بخرم»: the matches run from a 2M feature phone to a 180M flagship; three of them at random would
@@ -735,6 +824,8 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
         yield em.emit("status", {"text": "مدل‌هاش از خیلی ساده تا خیلی گرونه", "done": True})
         yield em.emit("question", q)
         return
+    if not build and (state.filters or state.filter_suggest):   # a rerun (filter tapped, budget…): the chips again
+        yield em.emit("filters", filters_event(state))
     cards = [p.card() for p in res.picks]
     _select_product(state, None)   # a new set of products: no shop or plan from the previous one is callable
     state.product_ids = [c["product_id"] for c in cards]
@@ -987,6 +1078,7 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
     if not text:
         yield em.emit("error", {"text": "یه چیزی بنویس تا شروع کنیم."})
         return
+    early = start_filters_early(llm, state, text, em.session_id)   # runs alongside the model's reading of the message
     out = understand(llm, state, text, em.session_id)   # history = previous turns; this message is added below
     state.remember("user", text)
     patch = dict(out.conditions_patch)
@@ -1016,7 +1108,7 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             return
         # the model's question replaces the advisor's; while it is open, no comparison (the answer changes the picks)
         asked = sum(e == "question" for e, _ in em.events)
-        yield from show_products(state, em, ask=not q, intro=not q)
+        yield from show_products(state, em, ask=not q, intro=not q, build=True, early=early)
         if q and sum(e == "question" for e, _ in em.events) == asked:   # one question per turn (e.g. not after «کجا رو نشون بدم؟»)
             yield ask_with_options(state, em, q)
     elif out.intent == "refine":

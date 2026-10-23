@@ -16,3 +16,6 @@
 {"run": "fake1", "kind": "app", "in": 10712, "out": 1751, "calls": 3, "cache_read": 6121, "cache_write": 0, "usd": 0.0402, "at": "19:59"}
 {"run": "vague1", "kind": "app", "in": 22931, "out": 3685, "calls": 8, "cache_read": 18975, "cache_write": 6325, "usd": 0.1023, "at": "20:03"}
 {"run": "floor1", "kind": "app", "in": 10655, "out": 1711, "calls": 3, "cache_read": 6325, "cache_write": 0, "usd": 0.0397, "at": "20:06"}
+{"run": "res1", "kind": "app", "in": 90140, "out": 21886, "calls": 17, "cache_read": 25300, "cache_write": 0, "usd": 0.4042, "at": "20:16"}
+{"run": "res2", "kind": "app", "in": 172818, "out": 14041, "calls": 41, "cache_read": 19248, "cache_write": 6416, "usd": 0.5059, "at": "20:19"}
+{"run": "res3", "kind": "app", "in": 301947, "out": 26393, "calls": 83, "cache_read": 76992, "cache_write": 0, "usd": 0.8832, "at": "20:42"}

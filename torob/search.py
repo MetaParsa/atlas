@@ -223,6 +223,23 @@ def candidates(need: Need, limit_per_query: int = 60, wide: bool = False,
     return out, cats
 
 
+def browse(categories: list[str], limit: int = 120, budget_min: int | None = None,
+           budget_max: int | None = None) -> list[Candidate]:
+    """The categories' best-selling products in the price range, for research beyond the text matches («5G»
+    can't be searched for in titles). Ranked after every text match."""
+    if not categories:
+        return []
+    con = store.get()
+    q = ",".join("?" * len(categories))
+    lo, hi = (budget_min or 0) * 0.95, (budget_max or 10**13) * 1.1
+    rows = con.execute(
+        f"SELECT product_id, title, title_norm, brand, category, image, specs, spec_count, sellers_total, price_min, "
+        f"price_median, price_max, fresh_offers_30d FROM products WHERE category IN ({q}) AND redacted = 0 "
+        f"AND price_median BETWEEN ? AND ? ORDER BY sellers_total DESC, spec_count DESC LIMIT ?",
+        (*categories, lo, hi, limit)).fetchall()
+    return [Candidate(**dict(r), rank=10_000 + i) for i, r in enumerate(rows)]
+
+
 def title_tokens(title_norm: str) -> set[str]:
     return {t for t in re.split(r"[\s\-_/|()،,]+", to_latin_digits(title_norm)) if len(t) > 1}
 

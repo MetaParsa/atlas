@@ -1232,3 +1232,32 @@ scenarios:
   expect:
   - {must_show_any: [products, question]}
   ideal: "فقط گوشی‌های بالای ۱۵۰ میلیون، بدون یادداشت‌های فنی."
+- id: res-01
+  group: clear
+  persona: دقیق و مشخص
+  turns: ["گوشی سامسونگ 5G با رم ۸ گیگ", "chip0: toggle"]
+  expect:
+  - {must_show: [products]}
+  - {}
+  ideal: "فیلترهای سامسونگ، 5G و رم ۸ گیگ ساخته شوند و همه‌ی کارت‌ها از آن‌ها رد شوند؛ با برداشتن یک فیلتر کارت‌ها عوض شوند."
+- id: res-02
+  group: clear
+  persona: ورزشکار
+  turns: ["هندزفری بلوتوث ضد آب برای باشگاه با باتری خوب"]
+  expect:
+  - {must_show: [products]}
+  ideal: "فیلتر ضد آب (و باتری) و کارت‌هایی که واقعاً ضد آب‌اند."
+- id: res-03
+  group: clear
+  persona: برنامه‌نویس
+  turns: ["لپ تاپ برای برنامه نویسی تا ۸۰ میلیون"]
+  expect:
+  - {must_show_any: [products, question]}
+  ideal: "لپ‌تاپ با رم ۱۶ گیگ، SSD و پردازنده‌ی خوب زیر ۸۰ میلیون."
+- id: res-04
+  group: clear
+  persona: خانواده
+  turns: ["تلویزیون ۵۵ اینچ هوشمند"]
+  expect:
+  - {must_show_any: [products, question]}
+  ideal: "تلویزیون‌های ۵۵ اینچ هوشمند."

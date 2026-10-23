@@ -1,0 +1,67 @@
+{
+ "summary": {
+  "run": "real1",
+  "n": 1,
+  "pass_rate": 0.0,
+  "groups": {
+   "journey": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.944
+   }
+  },
+  "p50_ms": 5630,
+  "p95_ms": 12209,
+  "card_p50_ms": 7949,
+  "card_p95_ms": 8501,
+  "tokens_in": 16799,
+  "tokens_out": 3432
+ },
+ "grades": [
+  {
+   "id": "real-01-trip",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.944,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "missing question"
+     ],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 5,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 6,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 7,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  }
+ ]
+}

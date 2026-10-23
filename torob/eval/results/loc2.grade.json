@@ -1,0 +1,212 @@
+{
+ "summary": {
+  "run": "loc2",
+  "n": 7,
+  "pass_rate": 0.714,
+  "groups": {
+   "location": {
+    "n": 4,
+    "pass": 3,
+    "check_score": 0.958
+   },
+   "followup": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "journey": {
+    "n": 2,
+    "pass": 1,
+    "check_score": 0.972
+   }
+  },
+  "p50_ms": 6050,
+  "p95_ms": 10501,
+  "card_p50_ms": 5686,
+  "card_p95_ms": 10481,
+  "tokens_in": 56258,
+  "tokens_out": 11106
+ },
+ "grades": [
+  {
+   "id": "loc-01",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "follow-06",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-14",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 1
+    }
+   ]
+  },
+  {
+   "id": "real-01-trip",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.944,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 5,
+     "fails": [
+      "reply~دقیقه: reply lacks /دقیقه/"
+     ],
+     "checks": 3
+    },
+    {
+     "turn": 6,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 7,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "locq-01",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "locq-02",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "locq-03",
+   "group": "location",
+   "pass": false,
+   "check_score": 0.833,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "center_moved: center still the default"
+     ],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  }
+ ]
+}

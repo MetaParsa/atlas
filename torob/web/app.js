@@ -64,7 +64,20 @@ function icon(name, cls) {
   }
   return svg;
 }
-const scrollEnd = () => { if (!replaying) window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); };
+// Follow the answer to the bottom while it arrives, unless the shopper has scrolled well up to read something
+// (more than ~1.5 screens from the bottom): then leave them there.
+const farFromBottom = () => document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 1.5 * window.innerHeight;
+let readingUp = false;
+window.addEventListener("wheel", () => { readingUp = farFromBottom(); }, { passive: true });
+window.addEventListener("touchmove", () => { readingUp = farFromBottom(); }, { passive: true });
+const scrollEnd = () => { if (!replaying && !readingUp) window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" }); };   // smooth scrolling is dropped by some browsers mid-stream
+// Images and maps finish loading after the scroll and push the answer down: keep following while it grows (during a
+// turn and a few seconds after it), unless the shopper has scrolled up to read.
+let followUntil = 0;
+new ResizeObserver(() => {
+  if (!replaying && !readingUp && (busy || performance.now() < followUntil))
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
+}).observe(document.querySelector("#stream"));
 
 // --- the radish: one animated mascot that acts out what the assistant is doing ------------------------------------
 // Frames come from radish-sheet.png (built by torob/tools/radish_sprites.py). A switch plays the old state's props
@@ -153,6 +166,7 @@ function hideTyping() { typing?.remove(); typing = null; }
 
 async function post(url, body) {
   if (busy) return false;
+  readingUp = false;   // a new message or tap: follow the answer from here
   setBusy(true);
   turn = { status: null, sawDone: false, block: null, failed: false };
   Radish.set("think");
@@ -191,8 +205,8 @@ async function post(url, body) {
     hideTyping();
     if (turn.status) turn.status.classList.remove("busy");
     setBusy(false);
-    if (turn.block) turn.block.scrollIntoView({ behavior: "smooth", block: "start" });   // show the top-ranked card
-    else scrollEnd();
+    followUntil = performance.now() + 4000;
+    scrollEnd();   // the end of the answer (its question or buttons) in view
     if (turn.askGeo) askLocationOnce();
   }
   return true;
@@ -316,6 +330,15 @@ const handlers = {
         budget ? el("button", { type: "button", class: "chip", onclick: () => SHEETS.budget() }, icon("tag"), el("span", { text: "مبلغ دلخواه" })) : null)));
     Radish.set("text");
   },
+  filters(d) {   // the filters the AI built from the shopper's words: × turns one off, + turns an offered one on
+    document.querySelectorAll(".filters-row.live").forEach((r) => { r.classList.remove("live"); r.querySelectorAll("button").forEach((b) => (b.disabled = true)); });
+    const btn = (f, on) => el("button", { type: "button", class: "chip fchip" + (on ? " on" : ""), "aria-pressed": String(on),
+      title: on ? "برداشتن این فیلتر" : "اضافه کردن این فیلتر", onclick: () => chip(f.chip, null) },
+      el("span", { text: on ? "×" : "+", class: "fx" }), el("span", { text: f.label }));
+    if (!(d.active || []).length && !(d.suggest || []).length) return;
+    stream.append(el("div", { class: "filters-row live" },
+      el("span", { class: "fh", text: "فیلترها" }), ...(d.active || []).map((f) => btn(f, true)), ...(d.suggest || []).map((f) => btn(f, false))));
+  },
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); Radish.set("happy"); },
   shop_cards(d) { hasResults = true; strip.hidden = false; if (!replaying && d.items?.length) turn.askGeo = true; shownProduct = d.product || null; putBlock("blk-shops", shopBlock(d)); Radish.set("happy"); },
   call_start(d) {
@@ -385,6 +408,7 @@ function handle(ev, d) {
   if (ev !== "conditions" && ev !== "done") hideTyping();   // the answer has started
   if (!QUIET.has(ev)) leaveStart();          // a silent change (e.g. location before searching) keeps the start screen
   (handlers[ev] || (() => {}))(d);
+  if (!QUIET.has(ev) && ev !== "done") scrollEnd();   // every new piece of the answer comes into view
 }
 
 function putBlock(id, node) {
@@ -750,7 +774,7 @@ function setConditions(d) {
   $("#loc-label").textContent = (d.area || "تهران") + (d.located ? "" : " (پیش‌فرض؛ بزن تا عوض کنی)");
   if (hasResults) strip.hidden = false;      // R1: the strip appears with the first results, not before
   const set = (key, label, on) => { const b = $(`[data-cond="${key}"]`, strip); b.textContent = label; b.classList.toggle("on", on); };
-  $("#start-gps")?.toggleAttribute("hidden", !!d.located);   // the start screen's «مکان من»: gone once we know
+  if (d.located) $("#start-gps")?.setAttribute("hidden", "");   // the start screen's «مکان من»: gone once we know (never back)
   set("loc", d.located ? (d.area || "مکان من") : "مکانت کجاست؟", !!d.located);   // stays reachable when the row above hides
   const pay = (PAYMENTS.find((p) => p[0] === d.payment) || PAYMENTS[0])[1];
   set("radius", km(d.radius_km), d.radius_km !== 3);
@@ -865,6 +889,8 @@ function useGps(quiet = false) {   // quiet: asked by the app itself, so a «no�
   const fail = (t) => { if (!quiet) showError(t); };
   getFix(async ({ lat, lng, acc }) => {
     if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return fail("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
+    try { localStorage.setItem(GEO_OK, "1"); } catch (_) {}   // given once: the start screen never offers it again
+    $("#start-gps")?.setAttribute("hidden", "");
     await pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
     if (acc > ROUGH_M) stream.append(el("div", { class: "question" }, agentRow(el("div", { class: "bubble agent", text: roughNote(acc) })),
       el("div", { class: "chips" }, el("button", { type: "button", class: "chip", onclick: pickOnMap }, icon("pin"), el("span", { text: "روی نقشه دقیقش کن" })))));
@@ -872,7 +898,7 @@ function useGps(quiet = false) {   // quiet: asked by the app itself, so a «no�
 }
 // The first time sellers appear (distance starts to matter) and the shopper hasn't said where they are, the browser
 // asks for the location once by itself; allowed, the sellers re-sort from there. Asked at most once per browser.
-const GEO_ASKED = "torob.geoAsked";
+const GEO_ASKED = "torob.geoAsked", GEO_OK = "torob.geoOK";
 async function askLocationOnce() {
   if (cond?.located || !navigator.geolocation) return;
   try { if (localStorage.getItem(GEO_ASKED)) return; localStorage.setItem(GEO_ASKED, "1"); } catch (_) {}
@@ -996,7 +1022,9 @@ document.addEventListener("click", (e) => {
 });
 $("#loc").addEventListener("click", openLocation);
 { const g = $("#start-gps"); if (g) { g.prepend(icon("pin")); g.addEventListener("click", () => useGps());
-    // already allowed: no need to offer it (the location is taken when it matters)
+    // already allowed or used once in this browser: never offered again (the location is taken when it matters)
+    let ok = false; try { ok = !!localStorage.getItem(GEO_OK); } catch (_) {}
+    if (ok) g.hidden = true;
     navigator.permissions?.query({ name: "geolocation" }).then((p) => { if (p.state === "granted") g.hidden = true; }).catch(() => {}); } }
 $("#plan-bar").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 $("#reset").addEventListener("click", () => {

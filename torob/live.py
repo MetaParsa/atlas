@@ -15,6 +15,7 @@ Politeness (Torob has no official API): one request every 2 s across the server,
 prices and a day for matches, short timeouts, and `contact-info` is never called (Torob logs it as a buy click).
 """
 
+import math
 import os
 import threading
 import time
@@ -96,14 +97,14 @@ class LiveTorob:
 
     # --- product: today's lowest price on Torob ----------------------------------------------------------------
 
-    def product(self, product_id: str, title: str) -> dict:
+    def product(self, product_id: str, title: str, ref_price: int | None = None) -> dict:
         """{"status": ok | no_match | unavailable, "price_min", "sellers", "torob_title", "url"}."""
         q = title.split("|")[0].strip()[:90]
         data = self._get(f"search|{normalize_fa(q)}", TTL_PRICE, "search/",
                          {"page": 0, "sort": "popularity", "size": 8, "query": q, "q": q, "source": "next_desktop"})
         if data is None:
             return {"status": "unavailable"}
-        hit = match_product(title, data.get("results") or [])
+        hit = match_product(title, data.get("results") or [], ref_price)
         if hit is None:
             return {"status": "no_match"}
         self.cache.live_put(f"prk|{product_id}", {"prk": hit["random_key"]})
@@ -150,9 +151,14 @@ class LiveTorob:
         return int(near[0]["price"]) if len(near) == 1 else None
 
 
-def match_product(title: str, results: list[dict]) -> dict | None:
+PRICE_BAND = (0.4, 2.5)   # a live price outside this ratio to the dataset's is another product (a case, a part)
+
+
+def match_product(title: str, results: list[dict], ref_price: int | None = None) -> dict | None:
     """The search result that is this exact product: every model code of the dataset title appears in it and the
-    titles are close. Ads, duplicates and priceless results don't count."""
+    titles are close. Ads, duplicates and priceless results don't count. With the dataset's own price, a result far
+    from it is not this product (a 13.9M «S26 Ultra» next to a 366M listing is an accessory), and among the close
+    titles the one nearest in price wins."""
     want = search.title_tokens(normalize_fa(title.split("|")[0]))
     codes = {c.lower() for c in search.model_tokens(title)}
     best, best_score = None, 0.0
@@ -164,9 +170,16 @@ def match_product(title: str, results: list[dict]) -> dict | None:
         if codes and not codes <= {c.lower() for c in search.model_tokens(name)}:
             continue
         score = len(want & have) / max(1, len(want | have))
+        if score < 0.5:
+            continue
+        if ref_price:
+            ratio = int(r["price"]) / ref_price
+            if not PRICE_BAND[0] <= ratio <= PRICE_BAND[1]:
+                continue
+            score = score - abs(math.log(ratio)) / 4   # close in price beats a slightly closer title
         if score > best_score:
             best, best_score = r, score
-    return best if best_score >= 0.5 else None
+    return best
 
 
 def _in_tehran(s: dict) -> bool:

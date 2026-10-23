@@ -1,0 +1,63 @@
+{
+ "summary": {
+  "run": "loc4",
+  "n": 2,
+  "pass_rate": 1.0,
+  "groups": {
+   "location": {
+    "n": 2,
+    "pass": 2,
+    "check_score": 1.0
+   }
+  },
+  "p50_ms": 6946,
+  "p95_ms": 12272,
+  "card_p50_ms": 8596,
+  "card_p95_ms": 9959,
+  "tokens_in": 18525,
+  "tokens_out": 3237
+ },
+ "grades": [
+  {
+   "id": "locq-01",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "locq-03",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  }
+ ]
+}

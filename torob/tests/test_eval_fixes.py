@@ -317,3 +317,57 @@ def test_a_budget_floor_keeps_cheaper_models_out():
     need = rule_route("گوشی سامسونگ").need
     res = advisor.pick_products(need, Conditions(radius_km=None, budget_min=100_000_000))
     assert res.picks and all(p.price >= 95_000_000 for p in res.picks)
+
+
+def test_compact_judge_rows_and_filter_marks_are_read():
+    from torob.agents.relevance import _verdicts
+    crit = [{"id": "f1"}, {"id": "f2"}]
+    v = _verdicts({"rows": [[0, 1, 0, 0, 3, "TF"], [1, 0, 0, 1, 0, "?T"], [9, 1, 0, 0, 1, "TT"]]}, 2, crit)
+    assert v[0]["show"] and v[0]["fit"] == 3 and v[0]["pass"] == {"f1": True, "f2": False}
+    assert not v[1]["show"] and v[1]["fake"] and v[1]["pass"] == {"f1": None, "f2": True}
+    assert 9 not in v   # an index outside the batch is ignored
+    legacy = _verdicts({"items": [{"i": 0, "show": True, "copy": True}]}, 1, [])
+    assert legacy[0]["show"] and legacy[0]["copy"]
+
+
+def test_filter_chips_toggle_and_a_removed_brand_widens_the_search():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.models import Chip, Need, SessionState
+    from torob.router import run_turn
+    st = SessionState(need=Need(product_type="گوشی موبایل", keywords=["گوشی سامسونگ"], brand_pref=["سامسونگ"]))
+    st.filters = [{"id": "f1", "label": "سامسونگ", "kind": "brand", "value": "سامسونگ", "test": "brand is Samsung", "must": True}]
+    st.filter_suggest = [{"id": "f2", "label": "5G", "kind": "spec", "value": "", "test": "supports 5G", "must": True}]
+    em = Emitter("s")
+    list(run_turn(_rule_llm(), st, em, chip=Chip(label="سامسونگ", kind="direct_call", tool="toggle_filter", args={"id": "f1"})))
+    assert not st.filters and [f["id"] for f in st.filter_suggest] == ["f1", "f2"]
+    assert st.need.brand_pref == [] and all("سامسونگ" not in k for k in st.need.keywords)
+    assert any(e == "filters" for e, _ in em.events) and any(e == "product_cards" for e, _ in em.events)
+    em = Emitter("s")
+    list(run_turn(_rule_llm(), st, em, chip=Chip(label="5G", kind="direct_call", tool="toggle_filter", args={"id": "f2"})))
+    assert [f["id"] for f in st.filters] == ["f2"]
+
+
+def test_a_brand_filter_is_applied_over_every_candidate_in_code():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from torob.agents import advisor
+    from torob.models import Conditions, Need
+    need = Need(product_type="گوشی موبایل", keywords=["گوشی موبایل"])
+    f = [{"id": "f1", "label": "شیائومی", "kind": "brand", "value": "شیائومی", "test": "brand is Xiaomi", "must": True}]
+    res = advisor.pick_products(need, Conditions(radius_km=None), filters=f)
+    assert res.picks and all("شیائومی" in (p.c.brand or "") + p.c.title or "xiaomi" in p.c.title.lower() for p in res.picks)
+
+
+def test_live_price_far_from_the_dataset_price_is_another_product():
+    from torob.live import match_product
+    res = [{"name1": "گوشی سامسونگ S26 Ultra 5G حافظه 256", "price": 13_900_000, "random_key": "a"},
+           {"name1": "گوشی سامسونگ S26 Ultra 5G حافظه 256 رم 12", "price": 352_000_000, "random_key": "b"}]
+    title = "گوشی سامسونگ S26 Ultra 5G | حافظه 256 رم 12 گیگابایت"
+    assert match_product(title, res, 366_450_000)["random_key"] == "b"   # the one near the dataset price
+    assert match_product(title, res[:1], 366_450_000) is None            # only an accessory-priced hit: no live price

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from core.llm import LLMClient
 
 MAX_ITEMS = 40   # the advisor ranks at most 40 anyway
+RESEARCH_ITEMS, BATCH = 120, 20   # with filters to check, the judge reads this many, in small parallel batches
 PROMPT = """A shopper in Tehran asked: {want}
 
 Products found in the shop catalogue (index | title | category | typical price in toman | key specs). Prices are current Tehran
@@ -52,8 +53,14 @@ Finally suggest "budget_steps": three budgets in toman, ascending (entry, middle
 with this request would pick between, judged from the prices of the products you marked show=true and from who it is
 for (an everyday item or a gift doesn't need to reach the most expensive listings).
 
-Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false, "fake": true|false, "fit": 0-3}}, ...], "budget_steps": [a, b, c]}}
-covering every index."""
+{criteria}Reply as compact JSON, one short row per product, covering every index:
+{{"rows": [[index, show 1|0, copy 1|0, fake 1|0, fit 0-3{pass_shape}], ...], "budget_steps": [a, b, c]}}"""
+
+CRITERIA = """The shopper's filters, in this order. For EACH product answer each one from its title and specs: T (yes),
+F (no) or ? (the title and specs don't say; never guess a spec that isn't written), as one string in filter order:
+{lines}
+
+"""
 
 
 @dataclass
@@ -63,34 +70,79 @@ class Judgement:
     budget_steps: list[int] = field(default_factory=list)   # the model's budget buttons (the advisor clamps them)
     fit: dict[str, int] = field(default_factory=dict)        # product_id -> 0..3, how well it serves the stated purpose
     fakes: list[str] = field(default_factory=list)            # titles that claim to be the item but aren't (hidden, told)
+    passes: dict[str, dict] = field(default_factory=dict)     # product_id -> {filter id: True | False | None}
 
 
-def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
+def _verdicts(reply: dict, n: int, criteria: list[dict]) -> dict[int, dict]:
+    """Compact rows ([i, show, copy, fake, fit, "TF?"]) or the older {"items": [{"i", "show", …}]} shape → per index."""
+    out = {}
+    for r in reply.get("rows") or []:
+        if not isinstance(r, list) or not r or not str(r[0]).isdigit() or int(r[0]) >= n:
+            continue
+        g = lambda k: r[k] if len(r) > k else None
+        marks = str(g(5) or "")
+        out[int(r[0])] = {"show": g(1) in (1, True, "1"), "copy": g(2) in (1, True, "1"), "fake": g(3) in (1, True, "1"),
+                          "fit": g(4) if isinstance(g(4), (int, float)) else None,
+                          "pass": {f["id"]: {"T": True, "F": False}.get(marks[k].upper()) if k < len(marks) else None
+                                   for k, f in enumerate(criteria)}}
+    for x in reply.get("items") or []:
+        if isinstance(x, dict) and str(x.get("i", "")).isdigit() and int(x["i"]) < n:
+            p = x.get("pass") if isinstance(x.get("pass"), dict) else {}
+            out[int(x["i"])] = {**x, "pass": {f["id"]: p.get(f["id"]) if isinstance(p.get(f["id"]), bool) else None for f in criteria}}
+    return out
+
+
+def keep(llm: LLMClient, want: str, cands: list, session_id: str, criteria: list[dict] | None = None) -> Judgement | None:
     """The candidates the model says match `want` (order kept) and the likely copies, or None (no usable judgement).
-    An empty `kept` is a real answer when the model gave a verdict on (nearly) every candidate: none of them fits."""
-    items = cands[:MAX_ITEMS]
+    An empty `kept` is a real answer when the model gave a verdict on (nearly) every candidate: none of them fits.
+    `criteria` (spec filters from agents/filters.py): every product is also checked against each, and the judge then
+    reads up to 120 products in parallel batches, so the whole category is researched, not just the top text hits."""
+    criteria = [c for c in criteria or [] if c.get("kind") == "spec"]
+    items = cands[:RESEARCH_ITEMS if criteria else MAX_ITEMS]
     if not items or not want.strip():
         return None
+    from concurrent.futures import ThreadPoolExecutor
+
     from torob.agents.advisor import spec_pairs   # (late: advisor imports this module)
-    specs = lambda c: "; ".join(f"{k}: {v}" for k, v in spec_pairs(getattr(c, "specs", ""))[:5])[:160]
-    rows = "\n".join(f"{i} | {c.title} | {c.category} | {c.price_median or '?'} | {specs(c)}" for i, c in enumerate(items))
-    try:
-        res = llm.complete("judge", [{"role": "user", "content": PROMPT.format(want=want.strip(), rows=rows)}],
-                           session_id=session_id, max_tokens=1500, json_mode=True)
-        reply = res.json()
-        verdicts = {int(v["i"]): v for v in reply.get("items", []) if str(v.get("i", "")).isdigit()}
-        steps = [int(x) for x in (reply.get("budget_steps") or []) if isinstance(x, (int, float)) and x > 0][:3]
-    except Exception:   # LLM off, budget spent, bad JSON: the rule-based result stands
+    specs = lambda c: "; ".join(f"{k}: {v}" for k, v in spec_pairs(getattr(c, "specs", ""))[:8 if criteria else 5])[:260 if criteria else 160]
+    crit = (CRITERIA.format(lines="\n".join(f"- {c['id']}: {c['test']}" for c in criteria)) if criteria else "")
+    shape = f', "{"T" * len(criteria)}" (one of T/F/? per filter)' if criteria else ""
+
+    def one(batch: list) -> tuple[dict, list[int]] | None:
+        rows = "\n".join(f"{i} | {c.title} | {c.category} | {c.price_median or '?'} | {specs(c)}" for i, c in enumerate(batch))
+        try:
+            res = llm.complete("judge", [{"role": "user", "content": PROMPT.format(want=want.strip(), rows=rows, criteria=crit,
+                                                                                   pass_shape=shape)}],
+                               session_id=session_id, max_tokens=1500 + 30 * len(batch) * len(criteria), json_mode=True)
+            reply = res.json()
+            v = _verdicts(reply, len(batch), criteria)
+            steps = [int(x) for x in (reply.get("budget_steps") or []) if isinstance(x, (int, float)) and x > 0][:3]
+        except Exception:   # LLM off, budget spent, bad JSON: this batch has no verdict
+            return None
+        return v, steps
+
+    batches = [items[i:i + BATCH] for i in range(0, len(items), BATCH)]
+    with ThreadPoolExecutor(max_workers=len(batches)) as pool:
+        answers = list(pool.map(one, batches))
+    if answers[0] is None:   # the first batch holds the best text matches: without it there is no judgement
         return None
+    verdicts, steps = {}, answers[0][1]
+    for b, (batch, ans) in enumerate(zip(batches, answers)):
+        if ans:
+            for i, v in ans[0].items():
+                verdicts[b * BATCH + i] = v
+    judged = [i for i in range(len(items)) if (i // BATCH) < len(answers) and answers[i // BATCH]]
     kept = [c for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True]
-    if not kept and len(verdicts) < 0.8 * len(items):   # an empty answer that skipped items is a bad answer, not a «no»
+    if not kept and len(verdicts) < 0.8 * len(judged):   # an empty answer that skipped items is a bad answer, not a «no»
         return None
     copies = {c.product_id for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True
               and verdicts[i].get("copy") is True}
-    fit = {}
+    fit, passes = {}, {}
     for i, c in enumerate(items):
-        v = verdicts.get(i, {}).get("fit")
-        if verdicts.get(i, {}).get("show") is True and isinstance(v, (int, float)):
-            fit[c.product_id] = max(0, min(3, int(v)))
+        vi = verdicts.get(i, {})
+        if vi.get("show") is True and isinstance(vi.get("fit"), (int, float)):
+            fit[c.product_id] = max(0, min(3, int(vi["fit"])))
+        if criteria and vi.get("show") is True:
+            passes[c.product_id] = vi.get("pass") or {f["id"]: None for f in criteria}
     fakes = [c.title for i, c in enumerate(items) if verdicts.get(i, {}).get("fake") is True]
-    return Judgement(kept, copies, steps, fit, fakes)
+    return Judgement(kept, copies, steps, fit, fakes, passes)

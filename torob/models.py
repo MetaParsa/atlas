@@ -128,6 +128,8 @@ class SessionState(BaseModel):
     history: list[dict] = []             # last turns: {"role", "content"}
     just_changed: list[str] = []         # the conditions the user set most recently: relaxed only as a last resort
     asked: list[str] = []                # the app's own questions already asked for the current need: not repeated
+    filters: list[dict] = []             # AI-built filters on now (agents/filters.py): label, kind, value, test, must, id
+    filter_suggest: list[dict] = []      # filters offered with «+» (same shape)
 
     def remember(self, role: str, content: str, keep: int = 10) -> None:
         self.history = (self.history + [{"role": role, "content": content}])[-keep:]
