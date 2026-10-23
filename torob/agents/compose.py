@@ -47,6 +47,9 @@ PROMPT = """تو بخش «چیدن جواب» دستیار خرید حضوری �
 text: جواب کوتاه به فارسی محاوره‌ای («بهتره»، نه «بهتر است»؛ حداکثر ۳ خط ساده، بدون Markdown). به کالا یا
 فروشگاه با اسم کوتاهش اشاره کن (مثلاً «R50i»)، هرگز با شناسه‌هایی مثل P1. عدد و ساعت را فقط از همین کارت‌ها نقل کن؛ چیزی که
 نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودیِ تأییدشده ندان.
+likely_copy=true یعنی هوش مصنوعی حدس زده این آگهی طرح یا کپیِ یک برند است (روی کارت نشان داده نمی‌شود). اگر کاربر درباره‌ی اصل
+بودن، ارزانیِ عجیب یا اینکه کدام را بخرد پرسید، صادقانه بگو کدام احتمالاً کپی است و در مغازه چه چیزی را چک کند (سریال، پلمب،
+گارانتی)؛ کپی را به‌عنوان اصل پیشنهاد نکن. اگر نپرسید، لازم نیست حرفش را بزنی مگر اینکه خودت آن را پیشنهاد کنی.
 مکان داده‌ی اصلی ماست: shopper می‌گوید خریدار کجاست (یا اینکه هنوز نمی‌دانیم و فاصله از مرکز پیش‌فرض است)، هر فروشگاه
 minutes_to_shop (با by: پیاده یا ماشین) و where (پاساژ، طبقه، پلاک) و open_at_arrival دارد و هر محصول nearest_seller_minutes (با nearest_seller_by). سؤال‌های «نزدیکه؟»،
 «کجاست؟»، «کدوم نزدیک‌تره؟»، «هم‌مسیرن؟» یا «تو یه پاساژن؟» را با همین‌ها جواب بده و هرگز نگو فاصله یا مکان ثبت نشده. اگر
@@ -80,7 +83,8 @@ def product_fact(card: dict, specs: list[tuple[str, str]]) -> dict:
     return {"product_id": card["product_id"], "title": card["title"].split("|")[0].strip(),
             "label": card.get("role_label") or "", "price_min": card.get("price_min"), "price_max": card.get("price_max"),
             "scope": "نزدیکت" if card.get("price_scope") == "area" else "در تهران", "sellers": sellers or 0,
-            "nearest_minutes": card.get("nearest_minutes"), "nearest_by": card.get("nearest_by"), "specs": dict(specs[:14])}
+            "nearest_minutes": card.get("nearest_minutes"), "nearest_by": card.get("nearest_by"),
+            "likely_copy": bool(card.get("copy_suspect")), "specs": dict(specs[:14])}
 
 
 class Board:
@@ -101,6 +105,7 @@ class Board:
                                 "price_max": x["price_max"], "price_where": x["scope"], "sellers": x["sellers"],
                                 "nearest_seller_minutes": x.get("nearest_minutes"),
                                 "nearest_seller_by": "پیاده" if x.get("nearest_by") == "walk" else "ماشین",
+                                "likely_copy": x.get("likely_copy", False),
                                 "specs": x["specs"]} for k, x in self.p.items()]
         if self.s:
             out["shops"] = [{"id": k, "name": x["name"], "price": x["price_min"], "price_age": x["price_age"],

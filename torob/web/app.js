@@ -300,6 +300,8 @@ const handlers = {
     }
     turn.status.lastChild.textContent = d.text;
     turn.status.classList.toggle("busy", !d.done);
+    // the shopper sees what is happening («دارم مدل‌ها رو مقایسه می‌کنم…»), not how the pipeline counted it
+    turn.status.hidden = !!d.done;
     if (!d.done) Radish.set(d.text.includes("تماس") ? "call" : d.text.includes("فروشنده") ? "map" : "search");
   },
   message(d) { if (d.text) { stream.append(agentRow(el("div", { class: "bubble agent", text: d.text }))); Radish.set("text"); } },
@@ -521,7 +523,6 @@ function productBlock(d) {
         el("div", { class: "meta", title: p.why }, "ثبت‌شده" + (sellers ? ` · ${fa(sellers)} فروشنده ${scope}` : ` ${scope}`)),
         liveLine,
         p.over_budget_pct ? el("div", { class: "over", text: `${fa(p.over_budget_pct)}٪ بالاتر از بودجه` }) : null,
-        p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی)" }) : null,
         p.button ? chipButton(p.button, "btn blue", `فروشنده‌های «${shortTitle(p.title)}»`, "store") : null)));
   }
   const wrap = el("div", { class: "row-wrap" }, row);

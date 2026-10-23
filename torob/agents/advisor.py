@@ -298,10 +298,8 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
                                  [], None, 0, False, n_candidates=n_found, n_matching=0)
         else:             # only the products that are the thing asked for compete
             reps, copies, n_matching, steps = j.kept, j.copies | _priced_like_copies(j.kept), len(j.kept), j.budget_steps
-            real = [c for c in reps if c.product_id not in copies]
-            if real and len(real) < len(reps):   # never recommend a likely copy over the real thing
-                notes.append(f"{to_fa_digits(len(reps) - len(real))} آگهیِ ارزان‌تر شبیه طرح یا کپی بود؛ کنارشون گذاشتم.")
-                reps = real
+            # likely copies stay among the cards (the shopper may want the cheap one); each card carries the flag,
+            # and the answer step mentions it when the shopper asks about originality, price or which to buy
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
     budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)
