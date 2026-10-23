@@ -231,11 +231,13 @@ def _on_screen_cards(state: SessionState) -> str:
     return "الان روی صفحه نتیجه‌ای نیست."
 
 
-def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
+def understand(llm: LLMClient, state: SessionState, text: str, session_id: str, photo: str | None = None) -> RouterOutput:
     """History (previous turns only) + what is on screen + this message → RouterOutput. Any failure → rule_route
     (and is recorded)."""
     messages = [{"role": "system", "content": ROUTER_PROMPT, "cache": True},   # unchanging: cached across turns and users
-                {"role": "system", "content": f"{_place_line(state)}\n{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."},
+                {"role": "system", "content": f"{_place_line(state)}\n{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."
+                 + (f"\nکاربر همراه این پیام عکسی فرستاده که در آن «{photo}» دیده می‌شود: این کالایی است که دارد یا جلویش است "
+                    f"(نقطه‌ی شروع)، نه لزوماً خواسته‌اش؛ حرفش می‌گوید نسبت به آن چه می‌خواهد." if photo else "")},
                 *state.history[-6:], {"role": "user", "content": text}]
 
     def note(e: Exception, reply: str = "") -> None:
@@ -1084,7 +1086,8 @@ def rerun_latest(state: SessionState, em: Emitter) -> Iterator[str]:
         yield from show_products(state, em)
 
 
-def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, chip: Chip | None) -> Iterator[str]:
+def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, chip: Chip | None,
+          photo: str | None = None) -> Iterator[str]:
     if chip and chip.kind == "direct_call":
         entry = DIRECT_TOOLS.get(chip.tool or "")
         if entry is None:
@@ -1105,8 +1108,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         yield em.emit("error", {"text": "یه چیزی بنویس تا شروع کنیم."})
         return
     early = start_filters_early(llm, state, text, em.session_id)   # runs alongside the model's reading of the message
-    out = understand(llm, state, text, em.session_id)   # history = previous turns; this message is added below
-    state.remember("user", text)
+    out = understand(llm, state, text, em.session_id, photo)   # history = previous turns; this message is added below
+    state.remember("user", f"(عکس: {photo}) {text}" if photo and photo != text else text)
     patch = dict(out.conditions_patch)
     if out.need and out.need.budget_max and "budget_max" not in patch:
         patch["budget_max"] = out.need.budget_max
@@ -1351,11 +1354,11 @@ def rule_answer(shown: list[dict], text: str) -> str:
 
 
 def run_turn(llm: LLMClient, state: SessionState, em: Emitter, *, text: str | None = None,
-             chip: Chip | None = None) -> Iterator[str]:
+             chip: Chip | None = None, photo: str | None = None) -> Iterator[str]:
     """One user turn → SSE strings, always ending with `done` (unless the client disconnected)."""
     em.llm = llm
     try:
-        yield from _turn(llm, state, em, text, chip)
+        yield from _turn(llm, state, em, text, chip, photo)
     except Exception as e:   # never leave the client hanging; the detail goes to the event log only
         yield em.emit("error", {"text": "یه مشکلی پیش اومد؛ دوباره امتحان کن.", "detail": type(e).__name__})
     yield em.emit("done", {})

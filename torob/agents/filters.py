@@ -36,6 +36,9 @@ Rules:
 - active: only what the shopper asked for or clearly implied by a stated purpose. «سامسونگ» → kind brand,
   value = the brand as the catalogue writes it. «گوشی برای بازی» → spec filters such as RAM 8 GB or more, a gaming-
   class chip, a high refresh rate (must=false: they rank, they don't exclude). «حتما 5G» → must=true.
+- A photo («(عکس: …)» in what the shopper said) is what they have in hand, the starting point, not the wish. «not this
+  colour» / «یه رنگ دیگه» → a spec filter excluding the photo's colour (label «غیر از آبی», test "colour is not blue",
+  must=true), plus the model itself if named; never a filter FOR something the shopper said they don't want.
 - Do NOT make filters for price or budget (the app has its own budget buttons), nor for "original/genuine".
 - label: Persian, 2–4 words, how a shop assistant would say it («رم ۸ گیگ به بالا», «5G», «دوربین ۵۰ مگاپیکسل+»,
   «سامسونگ»). Use Persian digits.

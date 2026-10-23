@@ -535,16 +535,16 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                 yield em.emit("status", {"text": "دارم عکس رو نگاه می‌کنم…", "done": False})
                 seen = vision.identify(llm(), image, sid)
                 if seen:   # what the photo was read as stays in the chat (and its history), so a misreading is visible
-                    yield say(state, em, f"تو عکس «{seen}» رو می‌بینم؛ دنبالش می‌گردم.")
+                    yield say(state, em, f"تو عکس «{seen}» رو می‌بینم.")
                 else:
                     yield em.emit("status", {"text": "عکس رو نشناختم", "done": True})
                 if seen:
-                    query = f"{text} {seen}" if text else seen
+                    query = text or seen   # the photo is the starting point, not part of the wish («یه رنگ دیگه‌اش»)
                 elif not text:
                     yield em.emit("message", {"text": "از عکس نفهمیدم چه کالاییه؛ اسم یا مدلش رو بنویس تا پیداش کنم."})
                     yield em.emit("done", {})
                     return
-            for chunk in run_turn(llm(), state, em, text=query, chip=chip):
+            for chunk in run_turn(llm(), state, em, text=query, chip=chip, photo=seen if image else None):
                 yield chunk
                 if delay and chunk.startswith("event: call_line"):
                     time.sleep(delay)   # the call reads like a call; the facts are already decided
