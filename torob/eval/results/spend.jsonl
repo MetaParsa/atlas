@@ -8,3 +8,7 @@
 {"run": "r2", "kind": "judge", "in": 304896, "out": 36031, "usd": 0.9701, "at": "17:15"}
 {"run": "r3", "kind": "app", "in": 50937, "out": 15461, "calls": 35, "cache_read": 93262, "cache_write": 5486, "usd": 0.2889, "at": "17:19"}
 {"run": "r3", "kind": "judge", "in": 28655, "out": 3837, "usd": 0.0957, "at": "17:20"}
+{"run": "real1", "kind": "app", "in": 16799, "out": 3432, "calls": 12, "cache_read": 33558, "cache_write": 5593, "usd": 0.0886, "at": "18:01"}
+{"run": "loc2", "kind": "app", "in": 56258, "out": 11106, "calls": 34, "cache_read": 104057, "cache_write": 6121, "usd": 0.2597, "at": "18:09"}
+{"run": "loc3", "kind": "app", "in": 9949, "out": 1943, "calls": 5, "cache_read": 12242, "cache_write": 0, "usd": 0.0418, "at": "18:11"}
+{"run": "loc4", "kind": "app", "in": 18525, "out": 3237, "calls": 9, "cache_read": 24484, "cache_write": 0, "usd": 0.0743, "at": "18:14"}

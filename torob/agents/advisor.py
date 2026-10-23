@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 
 from core.text import format_price_short, normalize_fa, to_fa_digits
 from torob import search, store
+from torob.agents.shops import WALK_MAX_M
 from torob.logic.geo import bbox, estimate_minutes, haversine_m
 from torob.models import Chip, Conditions, Need
 
@@ -72,6 +73,8 @@ class Pick:
 
     def card(self) -> dict:
         priced = self.area_priced
+        m = self.area.nearest_m
+        by = "walk" if m is not None and m <= WALK_MAX_M else "car"   # same rule as the shop cards
         return {
             "product_id": self.c.product_id, "title": self.c.title, "brand": self.c.brand, "image": self.c.image,
             "category": self.c.category, "role": self.role, "role_label": LABELS[self.role],
@@ -82,7 +85,7 @@ class Pick:
             "fresh_in_area": self.area.fresh, "over_budget_pct": self.over_budget_pct,
             "spec_lines": self.spec_lines, "same_title_variants": len(self.same_title_ids), "why": self.why,
             "copy_suspect": self.copy_suspect,
-            "nearest_minutes": estimate_minutes(self.area.nearest_m) if self.area.nearest_m is not None else None,
+            "nearest_minutes": estimate_minutes(m, by) if m is not None else None, "nearest_by": by,
         }
 
 
@@ -137,6 +140,12 @@ def area_stats(product_ids: list[str], cond: Conditions) -> dict[str, AreaStat]:
         st.sellers = len(shops[pid])
         st.prices.sort()
     return out
+
+
+def _nearest_seller_m(product_id: str, cond: Conditions) -> float | None:
+    rows = store.get().execute("SELECT s.lat, s.lon FROM offers o JOIN shops s USING (shop_id) WHERE o.product_id = ? "
+                               "AND s.lat IS NOT NULL", (product_id,)).fetchall()
+    return min((haversine_m(cond.center.lat, cond.center.lng, r["lat"], r["lon"]) for r in rows), default=None)
 
 
 def spec_pairs(specs_json: str) -> list[tuple[str, str]]:
@@ -365,6 +374,9 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     picks = [Pick(c, "other", stats.get(c.product_id, AreaStat()), in_area, whole_city,
                   same_title_ids=same_title.get(c.product_id, [])) for c in chosen]
     _label(picks)
+    for p in picks:   # every seller outside the radius: the nearest is still a fact the shopper needs («از ونک دوره؟»)
+        if p.area.nearest_m is None:
+            p.area.nearest_m = _nearest_seller_m(p.c.product_id, cond)
     for p in [*picks, *([named] if named else [])]:
         if budget and p.price > budget:
             pct = round((p.price / budget - 1) * 100)

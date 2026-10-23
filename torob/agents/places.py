@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime
 from functools import lru_cache
 
-from core.text import format_price_short, format_toman, to_fa_digits
+from core.text import normalize_fa, format_price_short, format_toman, to_fa_digits
 from torob import clock, store
 from torob.agents import shops as shops_agent
 from torob.models import Conditions
@@ -72,6 +72,35 @@ def hubs(categories: tuple[str, ...] = (), product_id: str | None = None) -> dic
     return {"total": total, "buildings": buildings, "areas": areas, "spread": spread}
 
 
+# Approximate centres of well-known Tehran places (±~500 m), for a shopper who says where they are and the shop data
+# has too few shops there to place it («تو ونکم»: one shop in the data). Hard geographic facts, not behaviour rules.
+TEHRAN_PLACES = {
+    "ونک": (35.7575, 51.4097), "تجریش": (35.8045, 51.4334), "انقلاب": (35.7009, 51.3912), "آزادی": (35.6997, 51.3381),
+    "ولیعصر": (35.7120, 51.4070), "سعادت آباد": (35.7790, 51.3700), "پونک": (35.7620, 51.3320), "شهرک غرب": (35.7570, 51.3740),
+    "جردن": (35.7700, 51.4170), "نیاوران": (35.8160, 51.4700), "پاسداران": (35.7700, 51.4700), "تهرانپارس": (35.7330, 51.5300),
+    "نارمک": (35.7290, 51.5000), "پیروزی": (35.6930, 51.4800), "نازی آباد": (35.6450, 51.4100), "شهر ری": (35.5950, 51.4350),
+    "اکباتان": (35.7080, 51.3020), "صادقیه": (35.7200, 51.3360), "ستارخان": (35.7180, 51.3550), "یوسف آباد": (35.7330, 51.4060),
+    "امیرآباد": (35.7300, 51.3900), "گیشا": (35.7330, 51.3800), "میرداماد": (35.7600, 51.4300), "ظفر": (35.7630, 51.4430),
+    "زعفرانیه": (35.8000, 51.4130), "الهیه": (35.7880, 51.4250), "فرمانیه": (35.7980, 51.4600), "قیطریه": (35.7900, 51.4400),
+    "هفت تیر": (35.7180, 51.4260), "فردوسی": (35.7010, 51.4200), "بهارستان": (35.6920, 51.4310), "توپخانه": (35.6860, 51.4210),
+    "امام خمینی": (35.6860, 51.4210), "شریعتی": (35.7400, 51.4430), "سید خندان": (35.7470, 51.4430), "مرزداران": (35.7440, 51.3490),
+    "جنت آباد": (35.7500, 51.3050), "چیتگر": (35.7350, 51.2400), "هروی": (35.7700, 51.4800), "تهران نو": (35.7100, 51.5050),
+    "نواب": (35.6850, 51.3800), "منیریه": (35.6830, 51.4020), "جمهوری": (35.6935, 51.4150), "کریمخان": (35.7140, 51.4180),
+    "مطهری": (35.7240, 51.4250), "طالقانی": (35.7060, 51.4280), "بازار": (35.6760, 51.4220), "شوش": (35.6690, 51.4310),
+}
+
+
+def _gazetteer(name: str) -> tuple[float, float] | None:
+    n = normalize_fa(name)
+    for w in ("میدان", "میدون", "خیابان", "خیابون", "محله", "نزدیک", "سمت"):
+        n = n.replace(w, " ")
+    n = " ".join(n.split())
+    for k, v in TEHRAN_PLACES.items():
+        if normalize_fa(k) == n or normalize_fa(k).replace(" ", "") == n.replace(" ", ""):
+            return v
+    return None
+
+
 def locate(name: str) -> tuple[float, float, str | None] | None:
     """A neighbourhood («تجریش»), street («ولیعصر») or passage the shopper names, placed by the dataset's own shops:
     the median position of shops in that area, or whose address or building names it. None if fewer than 3.
@@ -83,6 +112,8 @@ def locate(name: str) -> tuple[float, float, str | None] | None:
     con = store.get()
     rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND area = ?", (name,)).fetchall()
     where = None
+    if len(rows) < 3 and (spot := _gazetteer(name)):   # a known Tehran place the shop data can't place by itself
+        return spot[0], spot[1], None
     if len(rows) < 3:
         like = f"%{name}%"
         rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND (address LIKE ? OR building LIKE ?) "

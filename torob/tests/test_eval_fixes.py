@@ -156,3 +156,29 @@ def test_which_model_is_not_asked_twice_in_a_row():
     st.remember("user", "هر کدوم")
     list(_open_shops(st, em, ""))
     assert any(e == "shop_cards" for e, _ in em.events) and not any(e == "question" and "کدوم مدل" in d["text"] for e, d in em.events)
+
+
+def test_both_model_steps_are_told_where_the_shopper_and_the_shops_are():
+    """The router and the answer step must know the shopper's place and every card's distance, or they say «ثبت نشده»."""
+    import json
+
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.models import SessionState
+    from torob.router import _board, _on_screen, _place_line, run_turn
+    st, em = SessionState(), Emitter("s")
+    list(run_turn(_rule_llm(), st, em, text="پاوربانک"))
+    assert "پیش‌فرض" in _place_line(st) and "دقیقه" in _on_screen(st)
+    facts = json.loads(_board(st).facts())
+    assert facts["shopper"]["shopper_location_known"] is False
+    assert all("nearest_seller_minutes" in p for p in facts["products"])
+
+
+def test_known_tehran_places_are_placed_even_with_few_shops_there():
+    """«تو ونکم»: one shop in the data mentions Vanak; the shopper is still in Vanak, not at the city-centre default."""
+    from torob.agents.places import TEHRAN_PLACES, locate
+    lat, lng, where = locate("میدان ونک")
+    assert (lat, lng) == TEHRAN_PLACES["ونک"] and where is None

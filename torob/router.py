@@ -186,15 +186,39 @@ def _router_output(data: dict) -> RouterOutput:
     return RouterOutput.model_validate(data)
 
 
+def place_facts(state: SessionState) -> dict:
+    """Where the shopper is and how they get around: every model step gets this with the cards, so «نزدیکه؟»,
+    «کجاست؟», «کدوم نزدیک‌تره؟» are answered from data, never with «فاصله ثبت نشده»."""
+    c, now = state.conditions, clock.now()
+    return {"shopper_at": c.center.label,
+            "shopper_location_known": c.center.source != "default",   # False: distances are from the city-centre default
+            "radius_km": c.radius_km or "کل تهران", "travel": "پیاده" if c.mode == "walk" else "ماشین",
+            "now": f"{shops_agent.WEEKDAYS[H.iran_weekday(now.date())]} {now.strftime('%H:%M')}", "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else "الان + زمان رفتن",
+            "known_for_every_shop": "مختصات، پاساژ/طبقه/پلاک، فاصله و دقیقه تا خریدار، ساعت کاری و باز بودن موقع رسیدن"}
+
+
+def _place_line(state: SessionState) -> str:
+    f = place_facts(state)
+    who = (f"خریدار در «{f['shopper_at']}» است" if f["shopper_location_known"]
+           else f"مکان خریدار را هنوز نمی‌دانیم؛ فاصله‌ها از مرکز پیش‌فرض «{f['shopper_at']}» حساب می‌شود")
+    return (f"مکان: {who}؛ محدوده {f['radius_km']} کیلومتر، رفت‌وآمد {f['travel']}. برای هر فروشگاه "
+            f"{f['known_for_every_shop']} را داریم، و برای هر کارت محصول دقیقه‌ی نزدیک‌ترین فروشنده را.")
+
+
 def _on_screen(state: SessionState) -> str:
     """What the shopper is looking at, for the router: «کدومش بهتره؟» is about these cards, not a new search."""
     cost = lambda n: f" ({format_price_short(n)} تومان)" if n else ""
     if state.last_block_kind == "shops" and state.shops_shown:
         product = next((p["title"] for p in state.products_shown if p["product_id"] == state.selected_product_id), "")
-        return f"الان روی صفحه: فروشنده‌های «{product}»: " + "، ".join(s["name"] + cost(s["price_min"])
-                                                                       for s in state.shops_shown[:5])
+        open_fa = {"yes": "باز", "tight": "وقت کم", "no": "بسته", "unknown": "ساعت نامعلوم"}
+        return f"الان روی صفحه: فروشنده‌های «{product}»: " + "، ".join(
+            f"{s['name']}{cost(s['price_min'])} — {to_fa_digits(s['minutes'])} دقیقه، {s.get('where') or ''}، "
+            f"{open_fa.get(s.get('open_state'), '')}" for s in state.shops_shown[:5])
     if state.last_block_kind == "products" and state.products_shown:
-        return "الان روی صفحه: کارت‌های محصول: " + "، ".join(f"«{p['title']}»" + cost(p["price_min"])
+        near = lambda p: (f"، نزدیک‌ترین فروشنده {to_fa_digits(p['nearest_minutes'])} دقیقه "
+                          f"{'پیاده' if p.get('nearest_by') == 'walk' else 'با ماشین'}"
+                          if p.get("nearest_minutes") is not None else "")
+        return "الان روی صفحه: کارت‌های محصول: " + "، ".join(f"«{p['title']}»" + cost(p["price_min"]) + near(p)
                                                            for p in state.products_shown[:4])
     return "الان روی صفحه نتیجه‌ای نیست."
 
@@ -203,7 +227,7 @@ def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) 
     """History (previous turns only) + what is on screen + this message → RouterOutput. Any failure → rule_route
     (and is recorded)."""
     messages = [{"role": "system", "content": ROUTER_PROMPT, "cache": True},   # unchanging: cached across turns and users
-                {"role": "system", "content": f"{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."},
+                {"role": "system", "content": f"{_place_line(state)}\n{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."},
                 *state.history[-6:], {"role": "user", "content": text}]
 
     def note(e: Exception, reply: str = "") -> None:
@@ -735,7 +759,7 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
     state.shop_ids = state.call_ok_ids + [s["shop_id"] for s in res.category_only]
     state.shops_shown = [{
         "shop_id": o.shop["shop_id"], "name": o.shop["name"], "rank": i + 1, "price_min": o.price_min,
-        "price_age": shops_agent.price_line(o, now)["age"], "minutes": o.minutes, "open_state": o.open_state,
+        "price_age": shops_agent.price_line(o, now)["age"], "minutes": o.minutes, "mode": o.mode, "open_state": o.open_state,
         "closes": o.closes.strftime("%H:%M") if o.closes else None,
         "closes_iso": o.closes.isoformat() if o.closes else None,   # compare as datetimes: 00:00 = midnight
         "credit": [p for p, _ in o.payments],
@@ -1022,7 +1046,8 @@ def _open_shops(state: SessionState, em: Emitter, target: str) -> Iterator[str]:
     if near and state.history[-2:-1] == [{"role": "assistant", "content": asked}]:   # asked already: don't ask twice
         p = min(near, key=lambda p: p["nearest_minutes"])
         yield say(state, em, f"فروشنده‌های «{p['title'][:50]}» رو می‌آرم؛ نزدیک‌ترین فروشنده‌اش حدود "
-                             f"{to_fa_digits(p['nearest_minutes'])} دقیقه پیاده‌ست (تخمینی).")
+                             f"{to_fa_digits(p['nearest_minutes'])} دقیقه "
+                             f"{'پیاده' if p.get('nearest_by') == 'walk' else 'با ماشین'}ه (تخمینی).")
         _select_product(state, p["product_id"])
         yield from show_shops(state, em)
         return
@@ -1066,7 +1091,7 @@ def _board(state: SessionState) -> composer.Board:
             if "lat" in s and (p := lv.cached_shop_price(state.selected_product_id, s)):
                 live[s["shop_id"]] = p
     calls = {k: c for k, c in state.calls.items() if c.get("product_id") == state.selected_product_id}
-    return composer.Board(products, shops, calls, live)
+    return composer.Board(products, shops, calls, live, place=place_facts(state))
 
 
 def compose_ui(state: SessionState, em: Emitter, question: str, intro: bool = False):

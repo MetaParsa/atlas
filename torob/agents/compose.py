@@ -25,9 +25,9 @@ from core.text import format_toman, to_fa_digits
 
 MAX_BLOCKS = 3
 PRODUCT_ROWS = {"price": "قیمت ثبت‌شده", "sellers": "فروشنده"}
-SHOP_ROWS = {"price": "قیمت ثبت‌شده", "age": "تازگی قیمت", "minutes": "پیاده (تخمینی)", "closes": "بسته می‌شه",
+SHOP_ROWS = {"price": "قیمت ثبت‌شده", "age": "تازگی قیمت", "minutes": "تا فروشگاه (تخمینی)", "closes": "بسته می‌شه",
              "credit": "قسطی", "where": "کجا", "live": "قیمت الان در ترب", "stock": "موجودی"}
-METRICS = {"price": ("قیمت ثبت‌شده (تومان)", min), "minutes": ("پیاده‌روی تا فروشگاه (دقیقه، تخمینی)", min),
+METRICS = {"price": ("قیمت ثبت‌شده (تومان)", min), "minutes": ("زمان رسیدن به فروشگاه (دقیقه، تخمینی)", min),
            "sellers": ("تعداد فروشنده", max)}
 # A reason or checklist line must not state a price, a duration or a time: those come only from the data.
 _ID = re.compile(r"(?<![A-Za-z0-9])([PS][0-9]{1,2})(?![0-9])")
@@ -47,6 +47,10 @@ PROMPT = """تو بخش «چیدن جواب» دستیار خرید حضوری �
 text: جواب کوتاه به فارسی محاوره‌ای («بهتره»، نه «بهتر است»؛ حداکثر ۳ خط ساده، بدون Markdown). به کالا یا
 فروشگاه با اسم کوتاهش اشاره کن (مثلاً «R50i»)، هرگز با شناسه‌هایی مثل P1. عدد و ساعت را فقط از همین کارت‌ها نقل کن؛ چیزی که
 نیست بگو «ثبت نشده». قیمت ثبت‌شده را موجودیِ تأییدشده ندان.
+مکان داده‌ی اصلی ماست: shopper می‌گوید خریدار کجاست (یا اینکه هنوز نمی‌دانیم و فاصله از مرکز پیش‌فرض است)، هر فروشگاه
+minutes_to_shop (با by: پیاده یا ماشین) و where (پاساژ، طبقه، پلاک) و open_at_arrival دارد و هر محصول nearest_seller_minutes (با nearest_seller_by). سؤال‌های «نزدیکه؟»،
+«کجاست؟»، «کدوم نزدیک‌تره؟»، «هم‌مسیرن؟» یا «تو یه پاساژن؟» را با همین‌ها جواب بده و هرگز نگو فاصله یا مکان ثبت نشده. اگر
+shopper_location_known=false است، در نیم‌جمله بگو فاصله از کجا حساب شده و بگو با «مکان من» دقیق‌تر می‌شود.
 
 blocks: صفر تا ۳ بلوک، فقط وقتی واقعاً به تصمیم کمک می‌کنند (برای یک سؤال ساده، بلوک لازم نیست). انواع:
 - {{"type": "compare", "of": "products" یا "shops", "ids": [۲ تا ۴ شناسه], "rows": [کلیدها], "best": شناسه یا null}}
@@ -76,28 +80,32 @@ def product_fact(card: dict, specs: list[tuple[str, str]]) -> dict:
     return {"product_id": card["product_id"], "title": card["title"].split("|")[0].strip(),
             "label": card.get("role_label") or "", "price_min": card.get("price_min"), "price_max": card.get("price_max"),
             "scope": "نزدیکت" if card.get("price_scope") == "area" else "در تهران", "sellers": sellers or 0,
-            "nearest_minutes": card.get("nearest_minutes"), "specs": dict(specs[:14])}
+            "nearest_minutes": card.get("nearest_minutes"), "nearest_by": card.get("nearest_by"), "specs": dict(specs[:14])}
 
 
 class Board:
     """The shown cards under short ids, and how to read each row value from them."""
 
-    def __init__(self, products: list[dict], shops: list[dict], calls: dict, live_prices: dict[str, int]):
+    def __init__(self, products: list[dict], shops: list[dict], calls: dict, live_prices: dict[str, int],
+                 place: dict | None = None):
+        self.place = place or {}
         self.p = {f"P{i + 1}": x for i, x in enumerate(products)}
         self.s = {f"S{i + 1}": x for i, x in enumerate(shops)}
         self.calls = {c["shop_id"]: c for c in calls.values()}
         self.live = live_prices
 
     def facts(self) -> str:
-        out = {}
+        out = {"shopper": self.place} if self.place else {}
         if self.p:
             out["products"] = [{"id": k, "title": x["title"], "label": x["label"], "price_min": x["price_min"],
                                 "price_max": x["price_max"], "price_where": x["scope"], "sellers": x["sellers"],
-                                "nearest_seller_walk_minutes": x.get("nearest_minutes"),
+                                "nearest_seller_minutes": x.get("nearest_minutes"),
+                                "nearest_seller_by": "پیاده" if x.get("nearest_by") == "walk" else "ماشین",
                                 "specs": x["specs"]} for k, x in self.p.items()]
         if self.s:
             out["shops"] = [{"id": k, "name": x["name"], "price": x["price_min"], "price_age": x["price_age"],
-                             "walk_minutes": x["minutes"], "closes": x["closes"] or "ثبت نشده",
+                             "minutes_to_shop": x["minutes"], "by": "پیاده" if x.get("mode", "walk") == "walk" else "ماشین", "closes": x["closes"] or "ثبت نشده",
+                             "open_at_arrival": x.get("open_state"),
                              "credit": x["credit"], "where": x["where"],
                              "live_price": self.live.get(x["shop_id"]), "stock": self.stock(x)} for k, x in self.s.items()]
         return json.dumps(out, ensure_ascii=False)
