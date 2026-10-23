@@ -134,3 +134,13 @@ def test_cheap_preference_brings_cheaper_picks():
     cheap = advisor.pick_products(base.model_copy(update={"price_pref": "cheap"}), Conditions())
     top = lambda r: max(p.price for p in r.picks)
     assert cheap.picks and top(cheap) <= top(any_)
+
+
+def test_conditions_say_whether_the_shopper_chose_a_place():
+    """The city-centre default is labelled as such, so the page can ask «کجایی؟» instead of passing it off as theirs."""
+    from torob.models import Location
+    from torob.router import conditions_event
+    state = SessionState()
+    assert conditions_event(state)["located"] is False
+    state.conditions = state.conditions.model_copy(update={"center": Location(lat=35.7, lng=51.4, label="مکان من", source="gps")})
+    assert conditions_event(state)["located"] is True

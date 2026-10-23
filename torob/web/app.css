@@ -76,6 +76,9 @@ bdi { unicode-bidi: isolate; }
 .strip button::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0;
                        transform: rotate(45deg) translateY(-2px); opacity: .5; margin-inline-start: 2px; }
 .strip button.on { border-color: var(--ink); box-shadow: inset 0 0 0 .5px var(--ink); font-weight: 700; }
+.strip .loc-chip:not(.on) { border-color: var(--red); color: var(--red); }       /* the default centre: an open question */
+.loc-ask { display: grid; gap: 8px; margin: 4px 0 10px; padding: 10px 12px; border-radius: var(--r-m); background: var(--card);
+           border: 1px dashed var(--line-2); font-size: 13px; color: var(--muted); }
 .top.compact .loc { max-height: 0; padding-block: 0; opacity: 0; }                /* scrolled: keep the filters, drop the location row */
 .demo { flex: none; align-self: center; font-size: 12px; color: var(--sim); border: 1px dashed var(--sim); border-radius: 999px; padding: 2px 10px; }
 
@@ -89,7 +92,7 @@ bdi { unicode-bidi: isolate; }
 /* stream: the shopper in navy, the assistant on white cards (TorobChat-like) */
 main { flex: 1; padding: 16px 16px 64px; display: flex; flex-direction: column; gap: var(--gap); }
 .bubble { max-width: 82%; padding: 8px 14px; border-radius: 12px; font-size: 14px; line-height: 1.75; }
-.bubble.user { align-self: flex-start; background: var(--navy); color: var(--navy-ink); border-start-start-radius: 4px; }
+.bubble.user { white-space: pre-line; align-self: flex-start; background: var(--navy); color: var(--navy-ink); border-start-start-radius: 4px; }
 .bubble.agent { align-self: flex-end; background: var(--bubble); border: 1px solid var(--line); border-start-end-radius: 4px; white-space: pre-line; }
 .status { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
           background: var(--fill); border-radius: 999px; padding: 3px 12px; text-align: center; }
@@ -344,13 +347,14 @@ table.compare td:first-child { color: var(--muted); }
 /* composer: TorobChat's ask box — white, outlined, round, with a purple send button */
 .composer { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: flex-end; gap: 8px;
             padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
-.field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 44px; background: var(--card); border-radius: 24px;
+.field { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 8px; min-height: 44px; background: var(--card); border-radius: 24px;
          padding: 4px; padding-inline-start: 14px; box-shadow: inset 0 0 0 1px var(--line-2); transition: box-shadow .15s; cursor: text; }
 .field:focus-within { box-shadow: inset 0 0 0 1px var(--ai-solid), 0 0 0 3px rgba(124, 58, 237, .18); }
-.field input { flex: 1; min-width: 0; height: 36px; font-size: 16px; color: var(--ink); line-height: 1.4; border: 0; background: transparent; padding: 0;
-               outline: none; }   /* 36 px like the send button, so the field is 44 px like the camera button */
-.field input:focus-visible { box-shadow: none; }
-.field input::placeholder { color: var(--faint); }
+.field textarea { flex: 1; min-width: 0; height: 36px; max-height: 120px; font: inherit; font-size: 16px; color: var(--ink); line-height: 22px;
+                  border: 0; background: transparent; padding: 7px 0; outline: none; resize: none; overflow-y: auto; }
+                  /* one line is 36 px like the send button (field 44 px like the camera button); grows to ~5 lines */
+.field textarea:focus-visible { box-shadow: none; }
+.field textarea::placeholder { color: var(--faint); }
 /* send: an arrow inside the field — grey until there is something to send, then TorobChat's purple */
 #send { display: grid; place-items: center; flex: none; border: 0; background: var(--fill-2); color: #fff; border-radius: 50%;
         width: 36px; height: 36px; cursor: pointer; transition: transform .15s, background .2s; }

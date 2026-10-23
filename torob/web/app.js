@@ -628,6 +628,7 @@ function shopBlock(d) {
     block.append(miniMap({ center: cond?.center, radius_km: cond?.radius_km, points: pts,
       onOpen: () => openProductMap(d.product.product_id, shortTitle(d.product.title)) }, "همه‌ی فروشنده‌ها روی نقشه"));
   }
+  if (cond && !cond.located) block.append(locationAsk());
   (d.notes || []).forEach((n) => block.append(el("div", { class: "note", text: n })));
   if (d.relaxed?.chip) block.append(el("div", { class: "chips start-align" }, chipButton(d.relaxed.chip)));
   (d.items || []).forEach((s) => block.append(shopCard(s)));
@@ -739,9 +740,10 @@ function edgeFades(scroller, host = scroller) {
 
 function setConditions(d) {
   cond = d;
-  $("#loc-label").textContent = d.area || "تهران";
+  $("#loc-label").textContent = (d.area || "تهران") + (d.located ? "" : " (پیش‌فرض؛ بزن تا عوض کنی)");
   if (hasResults) strip.hidden = false;      // R1: the strip appears with the first results, not before
   const set = (key, label, on) => { const b = $(`[data-cond="${key}"]`, strip); b.textContent = label; b.classList.toggle("on", on); };
+  set("loc", d.located ? (d.area || "مکان من") : "مکانت کجاست؟", !!d.located);   // stays reachable when the row above hides
   const pay = (PAYMENTS.find((p) => p[0] === d.payment) || PAYMENTS[0])[1];
   set("radius", km(d.radius_km), d.radius_km !== 3);
   set("budget", d.budget_label || "بودجه: فرقی نداره", !!d.budget_max);
@@ -768,6 +770,7 @@ function opts(list, current, apply) {
 }
 
 const SHEETS = {
+  loc: () => openLocation(),
   radius: () => openSheet("محدوده", () => opts(RADII, cond ? cond.radius_km : 3, (v) => refine({ radius_km: v }))),
   budget: () => openSheet("بودجه", () => {
     const input = el("input", { type: "text", inputmode: "decimal", placeholder: "مبلغ دلخواه، مثلاً ۲٫۵ میلیون یا ۸۰۰ هزار" });
@@ -805,24 +808,34 @@ function pickLocation(args, label) {
   chip({ label, kind: "direct_call", tool: "set_location", args }, hasResults ? label : null);
 }
 
+function useGps() {
+  if (busy) return;
+  if (!navigator.geolocation) return showError("مرورگرت مکان رو نمی‌ده؛ یه محله انتخاب کن.");
+  navigator.geolocation.getCurrentPosition((p) => {
+    const { latitude: lat, longitude: lng } = p.coords;
+    if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return showError("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
+    pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
+  }, () => showError("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), { timeout: 8000 });
+}
+const pickOnMap = () => { if (!busy) maps().then((M) => M.pick()).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن.")); };
+
+// Distances are measured from the city-centre default until the shopper says where they are: say so, and ask.
+function locationAsk() {
+  return el("div", { class: "loc-ask" },
+    el("div", { text: `فاصله‌ها از «${cond.area}» حساب شده، چون هنوز نمی‌دونم کجایی.` }),
+    el("div", { class: "chips" },
+      el("button", { type: "button", class: "chip", onclick: useGps }, icon("pin"), el("span", { text: "مکان من" })),
+      el("button", { type: "button", class: "chip", text: "روی نقشه", onclick: pickOnMap }),
+      el("button", { type: "button", class: "chip", text: "یه محله", onclick: openLocation })));
+}
+
 async function openLocation() {
   if (busy || sheet.open) return;
   let areas = [];
   try { const r = await (await fetch("/api/areas")).json(); if (Array.isArray(r)) areas = r; } catch (_) {}
   openSheet("کجایی؟", () => el("div", { class: "opts" },
-    el("button", { type: "button", class: "opt plain", text: "مکان من (GPS)", onclick: () => {
-      sheet.close();
-      if (!navigator.geolocation) return showError("مرورگرت مکان رو نمی‌ده؛ یه محله انتخاب کن.");
-      navigator.geolocation.getCurrentPosition((p) => {
-        const { latitude: lat, longitude: lng } = p.coords;
-        if (lat < 35.5 || lat > 35.9 || lng < 51 || lng > 51.8) return showError("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره. یه محله انتخاب کن.");
-        pickLocation({ lat, lng, label: "مکان من", source: "gps" }, "مکان من");
-      }, () => showError("اجازه‌ی مکان داده نشد؛ یه محله انتخاب کن."), { timeout: 8000 });
-    } }),
-    el("button", { type: "button", class: "opt plain", text: "روی نقشه انتخاب کن", onclick: () => {
-      sheet.close();
-      maps().then((M) => M.pick()).catch(() => showError("نقشه باز نشد؛ اینترنت رو چک کن."));
-    } }),
+    el("button", { type: "button", class: "opt plain", text: "مکان من (GPS)", onclick: () => { sheet.close(); useGps(); } }),
+    el("button", { type: "button", class: "opt plain", text: "روی نقشه انتخاب کن", onclick: () => { sheet.close(); pickOnMap(); } }),
     areas.slice(0, 14).map((a) => el("button", { type: "button", class: "opt" + (cond && a.area === cond.area ? " on" : ""),
       text: `${a.area}، ${fa(a.shops_with_offers)} فروشگاه`, onclick: () => { sheet.close();
         pickLocation({ lat: a.lat, lng: a.lon, label: a.area, source: "area" }, a.area); } }))));
@@ -841,9 +854,22 @@ ro.observe(document.body); ro.observe($(".top"));
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const t = $("#text");
-  if (say(t.value, photo)) { t.value = ""; photo = null; renderPhoto(); }   // keep both if it couldn't be sent (busy)
+  if (say(t.value, photo)) { t.value = ""; fitText(); photo = null; renderPhoto(); }   // keep both if it couldn't be sent (busy)
 });
-$("#text").addEventListener("input", (e) => { syncSend(); if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
+// the message box grows with its lines; Enter sends, Shift+Enter or Ctrl+Enter starts a new line
+const fitText = () => { const t = $("#text"); t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; };
+$("#text").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  if (e.ctrlKey || e.metaKey) {                     // a textarea ignores Ctrl+Enter on its own
+    e.preventDefault();
+    e.target.setRangeText("\n", e.target.selectionStart, e.target.selectionEnd, "end");
+    e.target.dispatchEvent(new Event("input"));
+  } else if (!e.shiftKey) {
+    e.preventDefault();
+    $("#composer").requestSubmit();
+  }
+});
+$("#text").addEventListener("input", (e) => { fitText(); syncSend(); if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
 $("#attach").addEventListener("click", () => $("#file").click());
 $("#file").addEventListener("change", (e) => { attachPhoto(e.target.files[0]); e.target.value = ""; });
 $("#photo button").addEventListener("click", () => { photo = null; renderPhoto(); });

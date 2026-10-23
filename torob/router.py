@@ -299,7 +299,8 @@ def conditions_event(state: SessionState) -> dict:
             "arrive_at": c.arrive_at.strftime("%H:%M") if c.arrive_at else None,
             "arrive_label": _arrive_label(c.arrive_at),
             "arrive_today": bool(c.arrive_at) and H.as_tehran(c.arrive_at).date() == clock.now().date(),
-            "demo_time": clock.now().strftime("%H:%M") if clock.is_demo() else None}
+            "demo_time": clock.now().strftime("%H:%M") if clock.is_demo() else None,
+            "located": c.center.source != "default"}   # False = the city-centre default, never chosen by the shopper
 
 
 def _arrive_label(dt: datetime | None) -> str | None:
