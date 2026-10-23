@@ -1,6 +1,6 @@
 # the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ dataset — what's actually in it
 
-Profiled 2026-10-21 with DuckDB. Source: `starcoach-dataset-v16-cap300-csv.zip` (60.2 MB) from the the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ challenge page → unzipped to `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
+Profiled 2026-10-21 with DuckDB. Source: `the-event⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣-dataset-v16-cap300-csv.zip` (60.2 MB) from the the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ challenge page → unzipped to `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
 
 **Don't commit the CSVs to GitHub**: `products.csv` is 196 MB, over GitHub's 100 MB file limit. `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/.gitignore` keeps them out. The app loads them at build/deploy time into its own database.
 
@@ -31,7 +31,7 @@ Profiled 2026-10-21 with DuckDB. Source: `starcoach-dataset-v16-cap300-csv.zip` 
    - After fixing the parser: 4,159 of 4,224 addresses with «طبقه» have a parsed floor. 669 same-building groups (same spelling key + same area + within 200 m). Only 76 offers are explicitly priced per metre.
    - **58 shops declare Friday as a one-second «shift» 00:00:00–00:00:01.** It must not be read as open around the clock; shifts under 5 minutes are dropped, and the day becomes «ساعت کاری ثبت نشده».
    - **Shop coordinates are approximate.** The main Aladdin group (243 shops) spreads about 450 m, and the passage straddles two neighbourhood labels (فردوسی / شیخ هادی). Same-building groups therefore use spelling key + within 350 m of the group's centre, ignoring the label.
-   - Price flags: 4,949 offers (1.5%) flagged. Rules are in `starcoach-agents/torob/logic/price.py`.
+   - Price flags: 4,949 offers (1.5%) flagged. Rules are in `atlas⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/torob/logic/price.py`.
 7. **Several fields promised by the brief are not in the export** (README: "shop descriptions and catalogue coverage are omitted"). See §4.
 
 ---

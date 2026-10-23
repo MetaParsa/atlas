@@ -1,4 +1,4 @@
-# starcoach-agents
+# atlas⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣
 
 Entries for the Agentic AI hackathon⁤⁤⁣ (Oct 2026).
 
