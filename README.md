@@ -3,7 +3,6 @@
 Entries for the StarCoach Agentic AI hackathon (Oct 2026).
 
 - **`torob/`** — in-store shopping assistant on Torob's dataset → see [`torob/README.md`](torob/README.md) (Persian). Live: https://torob.frontage.store
-- **`liara/`** — Liara deploy + SRE assistant (first deploy with self-heal, troubleshooter with verified fixes, MCP bridge for coding agents, domain card) → see [`LIARA.md`](LIARA.md) (Persian: architecture, Liara API connection, limitations, user interaction).
 - `core/` — small shared framework: OpenAI-compatible LLM client with failover, spend guard and FakeLLM (`core/llm.py`), event emitter + bounded tool loop (`core/agent_loop.py`), Persian text helpers (`core/text.py`).
 
 ```bash
