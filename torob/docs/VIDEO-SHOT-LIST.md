@@ -1,4 +1,4 @@
-# Torob demo video — 5-minute shot list
+# the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ demo video — 5-minute shot list
 
 Mandatory (no video = removed from judging) and quality is scored. Show the product working, not code. Speak Persian
 over a phone screen recording; a silent recording scores lower but beats nothing. No editing needed: one clean take.
@@ -20,7 +20,7 @@ over a phone screen recording; a silent recording scores lower but beats nothing
 
 | Time | On screen | Say (Persian, roughly) | Rubric |
 |---|---|---|---|
-| 0:00–0:20 | Start screen: the radish says hello, the question «چی لازم داری؟», popular searches under it | «تو بازار ایستادی و نمی‌دونی کدوم مدل رو بخری، قیمت ترب شاید سه هفته پیش ثبت شده، مغازه رو تو پاساژ پیدا نمی‌کنی و فقط قسطی می‌تونی بخری. این دستیار خرید حضوریه که روی دیتاست ترب کار می‌کنه.» | Product |
+| 0:00–0:20 | Start screen: the radish says hello, the question «چی لازم داری؟», popular searches under it | «تو بازار ایستادی و نمی‌دونی کدوم مدل رو بخری، قیمت بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ شاید سه هفته پیش ثبت شده، مغازه رو تو پاساژ پیدا نمی‌کنی و فقط قسطی می‌تونی بخری. این دستیار خرید حضوریه که روی دیتاست بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ کار می‌کنه.» | Product |
 | 0:20–1:00 | Type «یه هندزفری بلوتوثی خوب برای باشگاه می‌خوام زیر ۳ میلیون». The radish thinks, then searches with its magnifier. Point at the status line «… مدل پیدا شد → … تا همونیه که خواستی → … تا نزدیکت → ۳ تا رو مقایسه کردم», then swipe the three cards | «هوش مصنوعی (Claude Sonnet) پیام رو فهمید، بودجه رو خودش گذاشت. از صدها نتیجه، فقط همونایی که واقعاً هندزفری‌ان موندن، نه قاب و کابل. سه تا کنار هم، با برچسب و دلیل.» | Step 1, Intelligence, UX |
 | 1:00–1:40 | Tap «فروشنده‌ها» on the best-value card. The radish opens its map. Show the three shop cards: price + «۲ هفته پیش», «موجودی: تأیید نشده», «۶ دقیقه پیاده، باز تا ۲۰:۰۰», floor and unit in the passage, the «فقط دسته‌ی مرتبط» line | «قیمت ثبت‌شده، تاریخش و موجودی هیچ‌وقت قاطی نمی‌شن. طبقه و واحد رو از آدرس درآوردیم. می‌دونه وقتی برسی بازه یا نه.» | Steps 2–3, Dataset |
 | 1:40–2:20 | Tap the strip: «پرداخت» → «قسطی». Cards re-render in place. Then «محدوده» → change it once | «بدون چت، با یک ضربه شرایط عوض می‌شه و نتیجه همون‌جا به‌روز می‌شه. اگر قسطی نزدیک نباشه، جایگزین پیشنهاد می‌ده.» | Pain 5, UX |
@@ -29,7 +29,7 @@ over a phone screen recording; a silent recording scores lower but beats nothing
 | 3:30–3:50 | Type «ساعت نه و نیم شب میام». The strip shows «رسیدن ۲۱:۳۰»; the status line says «… تا موقع رسیدن بسته‌ان»; the shopping plan at the top says «تا برسی بسته‌ست» and suggests another shop; shops without registered hours say «ساعت کاری ثبت نشده» | «حواسش به ساعت رسیدن هست: مغازه‌هایی که تا اون موقع بسته‌ان کنار رفتن، و ساعتی که ثبت نشده رو "نامعلوم" نشون می‌ده، نه "باز".» | Visit conditions, Dataset |
 | 3:50–4:10 | Tap «جدید», then the camera button, and photograph the product you have. Status «تو عکس: …» → the exact model and its sellers | «اسمش رو نمی‌دونی؟ عکسش رو بگیر.» | Product, Intelligence |
 | 4:10–4:35 | Switch to the PC: same site, wide layout with the shopping plan pinned beside the chat. Then `/admin`: «مدل: claude-sonnet-5-5», tokens used, response times, call results | «روی کامپیوتر هم کار می‌کنه. پشت صحنه: مدل، مصرف توکن با سقف روزانه، زمان پاسخ و آمار دیتاست.» | Deploy, Tech |
-| 4:35–5:00 | Back to the phone, reload the page: the whole chat comes back | «روی سرور در ایران با داکر و HTTPS اجرا می‌شه و گفت‌وگو با بارگذاری دوباره حفظ می‌شه. قیمت‌ها، ساعت‌ها و آدرس‌ها همونیه که فروشگاه‌ها تو ترب ثبت کردن؛ اسم‌ها و شماره‌ها ساختگی‌اند و تماس‌ها شبیه‌سازی‌ان. ممنون.» | Deploy, honesty |
+| 4:35–5:00 | Back to the phone, reload the page: the whole chat comes back | «روی سرور در ایران با داکر و HTTPS اجرا می‌شه و گفت‌وگو با بارگذاری دوباره حفظ می‌شه. قیمت‌ها، ساعت‌ها و آدرس‌ها همونیه که فروشگاه‌ها تو بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ ثبت کردن؛ اسم‌ها و شماره‌ها ساختگی‌اند و تماس‌ها شبیه‌سازی‌ان. ممنون.» | Deploy, honesty |
 
 ## Tips
 

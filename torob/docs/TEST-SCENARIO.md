@@ -99,7 +99,7 @@ Below: «+۹ فروشگاه دیگه» and «۶ فروشگاه فقط دسته�
 
 **User sees:** the shop block re-renders in place. A line: «پرداخت: قسطی · ۱ فروشگاه». Only Shop A remains, labelled «اسنپ‌پی (نوع نامشخص)». Under it: «با ۱۰ کیلومتر ۲ فروشگاه قسطی دیگه هست — بگردم؟» plus a chip «فقط حضوری تأییدشده».
 
-They tap «فقط حضوری تأییدشده» → 0 nearby → «نزدیک‌ترین فروشنده‌ی قسطی حضوری برای این مدل ۱۴ دقیقه با ماشین؛ یا R50i NC همین‌جا با ترب‌پی حضوری». They switch back to «همه».
+They tap «فقط حضوری تأییدشده» → 0 nearby → «نزدیک‌ترین فروشنده‌ی قسطی حضوری برای این مدل ۱۴ دقیقه با ماشین؛ یا R50i NC همین‌جا با بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣‌پی حضوری». They switch back to «همه».
 
 **Backend:**
 - `POST /api/refine` with the new `Conditions`: **no LLM**, same `find_shops` with a filter on `shop_payments` (BNPL providers; channel `in_person` vs `unknown`).
@@ -209,9 +209,9 @@ On Friday at 10:00 the user reopens the session and taps «باز بودن → �
 
 The user's friend opens the link in Tehranpars.
 
-**User sees:** «داده‌ی ترب این‌جا فقط ۴ فروشگاه داره. فروشگاه‌های جمهوری/فردوسی رو نشون بدم یا کل تهران؟» with two chips.
+**User sees:** «داده‌ی بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ این‌جا فقط ۴ فروشگاه داره. فروشگاه‌های جمهوری/فردوسی رو نشون بدم یا کل تهران؟» with two chips.
 
-**Backend:** the nearest area has < 20 shops with offers → a coverage message instead of an empty list. The dataset is ~10% of Torob's Tehran shops from selected districts, and the app says so rather than pretending.
+**Backend:** the nearest area has < 20 shops with offers → a coverage message instead of an empty list. The dataset is ~10% of the marketplace's⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ Tehran shops from selected districts, and the app says so rather than pretending.
 
 **Why:** brief "show unknown information clearly"; honest empty states (UX).
 

@@ -1,8 +1,8 @@
-# Torob dataset — what's actually in it
+# the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ dataset — what's actually in it
 
-Profiled 2026-10-21 with DuckDB. Source: `starcoach-dataset-v16-cap300-csv.zip` (60.2 MB) from the Torob challenge page → unzipped to `Torob/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
+Profiled 2026-10-21 with DuckDB. Source: `starcoach-dataset-v16-cap300-csv.zip` (60.2 MB) from the the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ challenge page → unzipped to `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
 
-**Don't commit the CSVs to GitHub**: `products.csv` is 196 MB, over GitHub's 100 MB file limit. `Torob/data/.gitignore` keeps them out. The app loads them at build/deploy time into its own database.
+**Don't commit the CSVs to GitHub**: `products.csv` is 196 MB, over GitHub's 100 MB file limit. `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/.gitignore` keeps them out. The app loads them at build/deploy time into its own database.
 
 ---
 
@@ -27,7 +27,7 @@ Profiled 2026-10-21 with DuckDB. Source: `starcoach-dataset-v16-cap300-csv.zip` 
 6. **Same product, same passage: 7,594 (product, passage) pairs have 2+ sellers.** "Two more shops in this passage sell the same thing" is a real, cheap feature.
 7a. **Found while building the DB (2026-10-22):**
    - **849 products have the placeholder title «عنوان حذف‌شده برای انتشار»** (title removed for publication). They are marked `redacted` and never searchable or shown.
-   - **4,448 titles are shared by 11,221 product IDs.** Torob keeps them as separate base products, e.g. «شارژر اپل توان 20 وات سه پین» = 3 IDs: 59 sellers (median 3.6 M), 29 sellers (median 5.4 M, likely genuine vs. non-genuine) and 1 seller. The "81 sellers" figure in §6 counted by title. The advisor must dedupe or explain same-title picks.
+   - **4,448 titles are shared by 11,221 product IDs.** the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ keeps them as separate base products, e.g. «شارژر اپل توان 20 وات سه پین» = 3 IDs: 59 sellers (median 3.6 M), 29 sellers (median 5.4 M, likely genuine vs. non-genuine) and 1 seller. The "81 sellers" figure in §6 counted by title. The advisor must dedupe or explain same-title picks.
    - After fixing the parser: 4,159 of 4,224 addresses with «طبقه» have a parsed floor. 669 same-building groups (same spelling key + same area + within 200 m). Only 76 offers are explicitly priced per metre.
    - **58 shops declare Friday as a one-second «shift» 00:00:00–00:00:01.** It must not be read as open around the clock; shifts under 5 minutes are dropped, and the day becomes «ساعت کاری ثبت نشده».
    - **Shop coordinates are approximate.** The main Aladdin group (243 shops) spreads about 450 m, and the passage straddles two neighbourhood labels (فردوسی / شیخ هادی). Same-building groups therefore use spelling key + within 350 m of the group's centre, ignoring the label.
@@ -61,14 +61,14 @@ Payment providers (shops):
 
 | Provider | in_person | unknown channel |
 |---|---|---|
-| ترب‌پی (Torob Pay) | 50 | 140 |
+| بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣‌پی (the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ Pay) | 50 | 140 |
 | اسنپ‌پی | 53 | 36 |
 | دیجی پی | 45 | 16 |
 | تارا | 26 | 11 |
 | ازکی‌وام | — | 5 |
 | 3 shop-specific schemes | — | 3 |
 
-→ Filter label: "ترب‌پی حضوری" only for `in_person`; `unknown` shown as "ترب‌پی (نوع نامشخص)". Min/max price limits are almost always null/0.
+→ Filter label: "بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣‌پی حضوری" only for `in_person`; `unknown` shown as "بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣‌پی (نوع نامشخص)". Min/max price limits are almost always null/0.
 
 ### products.csv — 225,903 rows
 
@@ -129,13 +129,13 @@ Real-named shops (Instagram/website) are mostly in شیخ هادی (43), فرد�
 |---|---|---|
 | Business type, intro description | ✗ (descriptions omitted) | Use `category_names` only. |
 | Shop images | ✗ | Show product images instead. |
-| Torob history, licences | ✗ | No trust badge from data; don't invent one. |
+| the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ history, licences | ✗ | No trust badge from data; don't invent one. |
 | Short address, location notes | Partly: `location_label` + free-text `address` | Parse passage/floor/unit with regex + normalisation. |
 | WhatsApp / Bale contacts | ✗ (phone only, fake) | Simulated shop inbox for follow-up. Hide the phone, or show it clearly labelled. |
 | English title, product description | ✗ | Search on Persian title + specs + seller titles. |
 | Price unit | ✗ (column is `price_toman`) | Assume toman. Some seller titles say "قیمت متری" (per metre); show the seller title so this is visible. |
 | Kalabarg (کالابرگ) support | ✗ (not anywhere, 0 matches) | Leave out of filters; ask organizers. |
-| Torob Pay in-person + instalments with info type | ✓ `payment_options.channel` | Filter + honest label. |
+| the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ Pay in-person + instalments with info type | ✓ `payment_options.channel` | Filter + honest label. |
 | Express delivery | ✓ 25% filled | Filter; null = unknown. |
 | Category-only vs has-product | ✓ implied: shops without offers | Two-tier results. |
 
@@ -146,11 +146,11 @@ Real-named shops (Instagram/website) are mostly in شیخ هادی (43), فرد�
 1. **Search index:** normalise Persian (ی/ي, ک/ك, digits, ZWNJ, spelling of passage names), FTS over `persian_title` + `seller_title` + `brand_name` + `category_name` + spec values. LLM turns the user's need into queries and a category.
 2. **Price sanity:** per product, flag offers > 3× or < ⅓ of the median of its priced offers (and absolute < 10,000 toman) as "قیمت مشکوک"; never rank them first, never use them in "cheapest". Null price → "قیمت ثبت نشده".
 3. **Price age label on every price**, from `last_price_changed_at`: "امروز / N روز پیش / N هفته پیش / بیش از ۳ ماه پیش — احتمالاً تغییر کرده".
-4. **Stock is never confirmed by the data.** Offer = "در ترب ثبت کرده". Only the follow-up step can produce "موجودی تأییدشده".
+4. **Stock is never confirmed by the data.** Offer = "در بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ ثبت کرده". Only the follow-up step can produce "موجودی تأییدشده".
 5. **Hours:** missing `{}` → "ساعت کاری ثبت نشده"; ignore `00:00–00:00` shifts; Friday mostly closed.
 6. **Group offers per (shop, product)** and show a price range when there are variants.
 7. **Areas:** use `location_label` + coordinates for the area chip; default to Ferdowsi/Jomhouri; outside the dense areas, say so and offer the nearest dense area.
-8. **Load once** into SQLite (FTS5) or Postgres at deploy; the 285 MB of CSV becomes a single DB file on the Liara disk.
+8. **Load once** into SQLite (FTS5) or Postgres at deploy; the 285 MB of CSV becomes a single DB file on the the platform⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ disk.
 
 ---
 
