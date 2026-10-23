@@ -76,7 +76,7 @@ def product_fact(card: dict, specs: list[tuple[str, str]]) -> dict:
     return {"product_id": card["product_id"], "title": card["title"].split("|")[0].strip(),
             "label": card.get("role_label") or "", "price_min": card.get("price_min"), "price_max": card.get("price_max"),
             "scope": "نزدیکت" if card.get("price_scope") == "area" else "در تهران", "sellers": sellers or 0,
-            "specs": dict(specs[:14])}
+            "nearest_minutes": card.get("nearest_minutes"), "specs": dict(specs[:14])}
 
 
 class Board:
@@ -93,6 +93,7 @@ class Board:
         if self.p:
             out["products"] = [{"id": k, "title": x["title"], "label": x["label"], "price_min": x["price_min"],
                                 "price_max": x["price_max"], "price_where": x["scope"], "sellers": x["sellers"],
+                                "nearest_seller_walk_minutes": x.get("nearest_minutes"),
                                 "specs": x["specs"]} for k, x in self.p.items()]
         if self.s:
             out["shops"] = [{"id": k, "name": x["name"], "price": x["price_min"], "price_age": x["price_age"],

@@ -7,6 +7,7 @@ is matched directly so the router can skip to its sellers. Notes describe the ca
 """
 
 import json
+from collections import Counter
 import math
 import statistics
 from dataclasses import dataclass, field
@@ -14,7 +15,7 @@ from datetime import datetime, timedelta
 
 from core.text import format_price_short, normalize_fa, to_fa_digits
 from torob import search, store
-from torob.logic.geo import bbox, haversine_m
+from torob.logic.geo import bbox, estimate_minutes, haversine_m
 from torob.models import Chip, Conditions, Need
 
 SELLER_FLOOR = 3          # A1: a pick needs ≥ 3 sellers nearby, relaxed to 2, then 1, saying so
@@ -32,6 +33,7 @@ class AreaStat:
     sellers: int = 0
     prices: list[int] = field(default_factory=list)   # sane registered prices of nearby offers
     fresh: int = 0                                     # nearby sane offers whose price changed in the last 30 days
+    nearest_m: float | None = None                     # the closest seller, straight line from the search centre
 
     @property
     def median(self) -> int | None:
@@ -80,6 +82,7 @@ class Pick:
             "fresh_in_area": self.area.fresh, "over_budget_pct": self.over_budget_pct,
             "spec_lines": self.spec_lines, "same_title_variants": len(self.same_title_ids), "why": self.why,
             "copy_suspect": self.copy_suspect,
+            "nearest_minutes": estimate_minutes(self.area.nearest_m) if self.area.nearest_m is not None else None,
         }
 
 
@@ -124,6 +127,8 @@ def area_stats(product_ids: list[str], cond: Conditions) -> dict[str, AreaStat]:
             continue
         st = out.setdefault(pid, AreaStat())
         shops.setdefault(pid, set()).add(shop)
+        d = haversine_m(lat, lon, slat, slon)
+        st.nearest_m = d if st.nearest_m is None else min(st.nearest_m, d)
         if flag == "ok":
             st.prices.append(price)
             if changed and datetime.fromisoformat(changed).isoformat() >= cutoff:
@@ -333,6 +338,11 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         cut = sorted(price[c.product_id] for c in pool)[max(2, len(pool) // 2)]
         pool = [c for c in pool if price[c.product_id] <= cut]
     pool = pool[:40]   # keep relevance: only the best text matches compete
+    if judge and pool:   # «چند تا پیشنهاد بده» for a trip kept a tent AND a torch: cards compare one kind of product
+        main = Counter(c.category for c in pool[:10]).most_common(1)[0][0]   # the kind most of the best matches are
+        same = [c for c in pool if c.category == main]
+        if len(same) >= 2 or len(pool) == 1:
+            pool = same
     avail = {c.product_id: stats.get(c.product_id, AreaStat()).sellers for c in pool}
     n = len(pool)
     rel = {c.product_id: 1 - i / max(1, n - 1) for i, c in enumerate(pool)}

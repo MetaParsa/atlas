@@ -228,7 +228,12 @@ async function renderSuggestions() {
   }
 }
 
-function showError(text) { leaveStart(); stream.append(el("div", { class: "error", text })); oops(); }
+function showError(text) {   // the same error again (a second tap on «مکان من») replaces itself instead of stacking
+  leaveStart();
+  const last = stream.lastElementChild;
+  if (last?.classList.contains("error") && last.textContent === text) last.remove();
+  stream.append(el("div", { class: "error", text })); oops();
+}
 function leaveStart() { $("#start")?.remove(); $("#radish-dock").hidden = false; }
 function oops() { if (turn) turn.failed = true; Radish.set("oops"); }
 

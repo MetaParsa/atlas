@@ -113,3 +113,46 @@ def test_budget_browse_finds_products_whose_titles_dont_share_the_words():
     added = {c.product_id for c in browsed} - {c.product_id for c in plain}
     assert added and all(c.price_median <= 2_200_000 for c in browsed if c.product_id in added)
     assert [c.product_id for c in browsed][:len(plain)] == [c.product_id for c in plain]   # text matches still lead
+
+
+def _rule_llm():
+    from core.llm import FakeLLM, LLMClient
+    from torob.router import rule_route
+    return LLMClient([], {"router": "x"}, enabled=False,
+                     fake=FakeLLM(lambda role, m: rule_route(m[-1]["content"]).model_dump(mode="json")))
+
+
+def test_product_cards_carry_the_nearest_seller_minutes():
+    """«کدومش بهم نزدیک تره؟» was answered «distance isn't recorded»: the cards must know it."""
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.models import SessionState
+    from torob.router import run_turn
+    st, em = SessionState(), Emitter("s")
+    list(run_turn(_rule_llm(), st, em, text="پاوربانک"))
+    items = next(d for e, d in em.events if e == "product_cards")["items"]
+    assert all(isinstance(p["nearest_minutes"], int) for p in items if p["sellers_in_area"])
+    assert all("nearest_minutes" in p for p in st.products_shown)
+
+
+def test_which_model_is_not_asked_twice_in_a_row():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.models import SessionState
+    from torob.router import _open_shops, run_turn
+    st, em = SessionState(), Emitter("s")
+    list(run_turn(_rule_llm(), st, em, text="پاوربانک"))
+    em = Emitter("s")
+    st.remember("user", "میخوام حضوری بخرم")
+    list(_open_shops(st, em, ""))
+    assert [e for e, _ in em.events] == ["question"] and "دقیقه" in em.events[0][1]["chips"][0]["label"]
+    em = Emitter("s")
+    st.remember("user", "هر کدوم")
+    list(_open_shops(st, em, ""))
+    assert any(e == "shop_cards" for e, _ in em.events) and not any(e == "question" and "کدوم مدل" in d["text"] for e, d in em.events)

@@ -1017,10 +1017,22 @@ def _open_shops(state: SessionState, em: Emitter, target: str) -> Iterator[str]:
     if not state.products_shown:
         yield say(state, em, "اول بگو دنبال چی هستی تا مدل‌ها و فروشنده‌هاش رو پیدا کنم.")
         return
-    chips = [Chip(label=p["title"][:40], kind="direct_call", tool="show_shops", args={"product_id": p["product_id"]}).model_dump()
+    asked = "فروشنده‌های کدوم مدل؟"
+    near = [p for p in state.products_shown if p.get("nearest_minutes") is not None]
+    if near and state.history[-2:-1] == [{"role": "assistant", "content": asked}]:   # asked already: don't ask twice
+        p = min(near, key=lambda p: p["nearest_minutes"])
+        yield say(state, em, f"فروشنده‌های «{p['title'][:50]}» رو می‌آرم؛ نزدیک‌ترین فروشنده‌اش حدود "
+                             f"{to_fa_digits(p['nearest_minutes'])} دقیقه پیاده‌ست (تخمینی).")
+        _select_product(state, p["product_id"])
+        yield from show_shops(state, em)
+        return
+    def label(p: dict) -> str:   # the distance is what tells the cards apart for someone about to walk there
+        m = p.get("nearest_minutes")
+        return p["title"][:32] + (f" · {to_fa_digits(m)} دقیقه" if m is not None else "")
+    chips = [Chip(label=label(p), kind="direct_call", tool="show_shops", args={"product_id": p["product_id"]}).model_dump()
              for p in state.products_shown]
-    state.remember("assistant", "فروشنده‌های کدوم مدل؟")
-    yield em.emit("question", {"text": "فروشنده‌های کدوم مدل؟", "chips": chips})
+    state.remember("assistant", asked)
+    yield em.emit("question", {"text": asked, "chips": chips})
 
 
 def _which_shop(state: SessionState, em: Emitter) -> Iterator[str]:
