@@ -24,6 +24,33 @@ KEEP_DAYS = 7
 _PRIVATE = re.compile(r"[0-9۰-۹٠-٩]{5,}|@|https?:|www\.", re.I)   # phone/card numbers, emails, links never become suggestions
 
 
+_D = "[0-9۰-۹٠-٩]"
+_SCRUB = [
+    (re.compile(r"sk-ant-[\w-]+|\b(?:sk|pk|rk)-[\w-]{16,}", re.I), "[کلید حذف شد]"),
+    (re.compile(r"\bbearer\s+[\w.~+/=-]{8,}", re.I), "[کلید حذف شد]"),
+    (re.compile(r"(?:x-api-key|api[_-]?key|token|password|secret)\s*[\"':=]+\s*[\"']?[^\s\"',}]{6,}", re.I), "[کلید حذف شد]"),
+    (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "[ایمیل حذف شد]"),
+    (re.compile(rf"(?<!{_D})(?:\+98|0098|[0۰])?[9۹](?:[\s-]?{_D}){{9}}(?!{_D})"), "[شماره حذف شد]"),   # mobile numbers
+    (re.compile(rf"{_D}(?:[\s-]?{_D}){{10,}}"), "[شماره حذف شد]"),   # card, account or landline numbers (11+ digits)
+]
+
+
+def scrub(value):
+    """Contacts and secrets out of anything kept on disk; prices (up to 10 digits, not shaped like a mobile number)
+    stay readable."""
+    if isinstance(value, str):
+        if value.startswith("data:image/"):   # a photo's small preview, not text
+            return value
+        for pattern, repl in _SCRUB:
+            value = pattern.sub(repl, value)
+        return value
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [scrub(v) for v in value]
+    return value
+
+
 def searchable(text: str | None) -> str | None:
     """The text as the start screen may show it to other people, or None if it shouldn't be shown."""
     t = " ".join((text or "").split())
@@ -65,9 +92,12 @@ class AppDB:
             self.purge()
 
     def log_event(self, sid: str, event: str, data: dict) -> None:
+        text = json.dumps(data, ensure_ascii=False)
+        if event in ("user", "error"):   # what a shopper typed or a provider answered: no contacts or secrets on disk
+            text = json.dumps(scrub(data), ensure_ascii=False)
         with self._lock:
             self._con.execute("INSERT INTO events(session_id, ts, event, data) VALUES (?,?,?,?)",
-                              (sid, time.time(), event, json.dumps(data, ensure_ascii=False)))
+                              (sid, time.time(), event, text))
 
     def events(self, sid: str, after: int = 0) -> list[dict]:
         with self._lock:

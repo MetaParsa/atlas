@@ -14,4 +14,5 @@ COPY torob ./torob
 RUN rm -rf torob/tests
 
 EXPOSE 8000
-CMD ["uvicorn", "torob.app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# no access log: the proxy already logs requests, and visitor addresses need not be kept twice
+CMD ["uvicorn", "torob.app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--no-access-log"]

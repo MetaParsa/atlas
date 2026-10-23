@@ -77,13 +77,82 @@ class RateLimiter:
             return True
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
 chat_limit = RateLimiter(20, 60)
 live_limit = RateLimiter(40, 60)   # the page asks for live prices card by card; Torob itself is protected in live.py
 tile_limit = RateLimiter(900, 60)  # a map view is ~30–60 tiles; panning around Tehran for a minute stays well under
 map_limit = RateLimiter(30, 60)
+# What one address can spend on the model: the per-session token cap means nothing if a script drops its cookie,
+# so turns and fresh sessions are also capped per IP (a judge testing for an hour stays far below these).
+turn_hour_limit = RateLimiter(_env_int("TURNS_PER_IP_HOUR", 60), 3600)
+turn_day_limit = RateLimiter(_env_int("TURNS_PER_IP_DAY", 300), 86400)
+new_session_limit = RateLimiter(_env_int("NEW_SESSIONS_PER_IP_HOUR", 20), 3600)
+api_limit = RateLimiter(_env_int("REQUESTS_PER_IP_MIN", 240), 60)   # every other route (state, history, admin, …)
+MAX_TURNS_RUNNING = _env_int("MAX_TURNS_RUNNING", 8)   # one CPU and 768 MB: more parallel turns only queue
+MAX_TURNS_PER_IP = 2
+MAX_BODY = 1_500_000             # bytes; the page's largest request is a ~300 KB photo (the proxy caps at 1 MB too)
 _busy: dict[str, float] = {}     # sid -> turn start; expires so a stream that never started can't lock a session
+_busy_ip: dict[str, str] = {}    # sid -> the address running it (concurrency per IP)
 _busy_lock = threading.Lock()
 BUSY_TTL_S = 60
+
+SECURITY_HEADERS = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"same-origin"),
+                    (b"x-frame-options", b"DENY"), (b"cross-origin-opener-policy", b"same-origin")]
+
+
+class Guard:
+    """Plain ASGI (it doesn't buffer the SSE chat): a per-IP ceiling on every request, a body-size cap before
+    anything is read, and security headers on every response."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        request = Request(scope)
+        reply = None
+        size = request.headers.get("content-length", "")
+        if size and (not size.isdigit() or int(size) > MAX_BODY):
+            reply = JSONResponse({"error": "درخواست خیلی بزرگه."}, status_code=413)
+        elif not scope["path"].startswith(("/static/", "/tiles/", "/health")) and not api_limit.allow(client_ip(request)):
+            reply = JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
+        if reply is not None:
+            return await reply(scope, receive, self._with_headers(send))
+        return await self.app(scope, self._capped(receive), self._with_headers(send))
+
+    @staticmethod
+    def _with_headers(send):
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                have = {k.lower() for k, _ in message.get("headers", [])}
+                message["headers"] = list(message.get("headers", [])) + [h for h in SECURITY_HEADERS if h[0] not in have]
+            await send(message)
+        return wrapped
+
+    @staticmethod
+    def _capped(receive):
+        """Also caps a chunked body that declared no length."""
+        got = 0
+
+        async def wrapped():
+            nonlocal got
+            message = await receive()
+            if message["type"] == "http.request":
+                got += len(message.get("body", b""))
+                if got > MAX_BODY:
+                    raise HTTPException(413, "درخواست خیلی بزرگه.")
+            return message
+        return wrapped
+
+
+app.add_middleware(Guard)
 
 
 def client_ip(request: Request) -> str:
@@ -358,7 +427,10 @@ def admin() -> HTMLResponse:
                           *[(outcomes.get(k, k), v) for k, v in st["call_outcomes"].items()]]),
         ("قیمت زنده از ترب", [("درخواست امروز به ترب", f"{fmt(live().polite.used_today)} از {fmt(live().polite.cap)}"),
                               ("فعال", "بله" if live().enabled else "خیر")]),
-        ("از آخرین راه‌اندازی", [("درخواست ردشده (محدودیت نرخ)", chat_limit.rejected + live_limit.rejected)]),
+        ("از آخرین راه‌اندازی", [("درخواست ردشده (محدودیت نرخ)", sum(x.rejected for x in (
+            chat_limit, live_limit, map_limit, tile_limit, api_limit, turn_hour_limit, turn_day_limit, new_session_limit))),
+            ("سقف هر اتصال", f"{fmt(turn_hour_limit.limit)} نوبت در ساعت، {fmt(turn_day_limit.limit)} در روز، "
+                             f"{fmt(new_session_limit.limit)} گفت‌وگوی تازه در ساعت")]),
     ]
     errs = "".join(f"<tr><td>{e(x['at'])}</td><td>{e(x['text'] or '')}</td><td>{e(x['detail'] or '')}</td></tr>"
                    for x in st["errors"]) or "<tr><td colspan=3>خطایی ثبت نشده</td></tr>"
@@ -415,15 +487,30 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                    bubble: str | None = None, image: str | None = None, thumb: str | None = None):
     if not same_origin(request):
         return JSONResponse({"error": "این درخواست از سایت دیگری آمده."}, status_code=403)
-    if not chat_limit.allow(client_ip(request)):
+    ip = client_ip(request)
+    if not chat_limit.allow(ip):
         return JSONResponse({"error": "یه کم آروم‌تر؛ چند لحظه بعد دوباره امتحان کن."}, status_code=429)
     adb = appdb()
-    sid, state = adb.load(sid)
+    asked, (sid, state) = sid, adb.load(sid)
+    if sid != asked and not new_session_limit.allow(ip):   # a fresh session per request would dodge the session cap
+        return JSONResponse({"error": "از این اتصال گفت‌وگوی تازه‌ی زیادی شروع شده؛ کمی بعد دوباره بیا."}, status_code=429)
     with _busy_lock:
+        now = time.monotonic()
         started = _busy.get(sid)
-        if started and time.monotonic() - started < BUSY_TTL_S:   # double tap / chip during a stream
+        if started and now - started < BUSY_TTL_S:   # double tap / chip during a stream
             return JSONResponse({"error": "صبر کن جواب قبلی تموم بشه."}, status_code=409)
-        _busy[sid] = time.monotonic()
+        live_sids = [s for s, t in _busy.items() if now - t < BUSY_TTL_S]
+        if len(live_sids) >= MAX_TURNS_RUNNING:
+            return JSONResponse({"error": "الان سرم شلوغه؛ چند ثانیه بعد دوباره بفرست."}, status_code=503)
+        if sum(_busy_ip.get(s) == ip for s in live_sids) >= MAX_TURNS_PER_IP:
+            return JSONResponse({"error": "صبر کن جواب‌های قبلی تموم بشه."}, status_code=429)
+        if not (turn_hour_limit.allow(ip) and turn_day_limit.allow(ip)):
+            return JSONResponse({"error": "سقف استفاده‌ی این اتصال برای الان پر شده؛ کمی بعد دوباره امتحان کن."},
+                                status_code=429)
+        _busy[sid], _busy_ip[sid] = now, ip
+        for s in [s for s, t in _busy.items() if now - t >= BUSY_TTL_S]:   # expired slots
+            _busy.pop(s, None)
+            _busy_ip.pop(s, None)
     em = Emitter(sid, sink=adb.log_event)
     said = (text if text is not None else bubble or "").strip()
     if said or image:   # the user's side of the chat, for /api/history (a photo keeps only its small preview)
@@ -459,6 +546,7 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                 adb.record_search(text)
             with _busy_lock:
                 _busy.pop(sid, None)
+                _busy_ip.pop(sid, None)
 
     resp = StreamingResponse(stream(), media_type="text/event-stream", headers=STREAM_HEADERS)
     resp.set_cookie("sid", sid, httponly=True, samesite="lax", secure=is_https(request), max_age=7 * 24 * 3600)
