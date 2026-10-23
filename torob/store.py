@@ -38,32 +38,32 @@ def connect() -> sqlite3.Connection:
     return con
 
 
-_shared: sqlite3.Connection | None = None
-_shared_sig: tuple[int, int] | None = None
-_shared_lock = threading.Lock()
+_local = threading.local()   # one connection per thread: a shared one deadlocked under concurrent searches
+_epoch = 0                   # bumped by reset(): every thread reopens on its next call
 
 
 def get() -> sqlite3.Connection:
-    """The one shared dataset connection, reopened whenever the DB file changes (a finished upload replaces a
-    partial one). Everything (app routes and agents) uses this, so nothing reads a stale file."""
-    global _shared, _shared_sig
-    with _shared_lock:
-        sig = file_signature()
-        if sig is None:
-            raise FileNotFoundError(DB_PATH)
-        if _shared is None or sig != _shared_sig:
-            if _shared is not None:
-                _shared.close()
-            _shared, _shared_sig = connect(), sig
-        return _shared
+    """This thread's dataset connection, reopened whenever the DB file changes (a finished upload replaces a partial
+    one) or after reset(). One per thread: SQLite calls back into Python for `ln1p`, and two threads on one connection
+    can block each other forever (seen live with three searches at once)."""
+    sig = file_signature()
+    if sig is None:
+        raise FileNotFoundError(DB_PATH)
+    con, con_sig, con_epoch = getattr(_local, "con", None), getattr(_local, "sig", None), getattr(_local, "epoch", -1)
+    if con is None or con_sig != sig or con_epoch != _epoch:
+        if con is not None:
+            try:
+                con.close()
+            except Exception:
+                pass
+        con = connect()
+        _local.con, _local.sig, _local.epoch = con, sig, _epoch
+    return con
 
 
 def reset() -> None:
-    global _shared, _shared_sig
-    with _shared_lock:
-        if _shared is not None:
-            _shared.close()
-        _shared = _shared_sig = None
+    global _epoch
+    _epoch += 1
 
 
 def meta(con: sqlite3.Connection) -> dict[str, str]:
