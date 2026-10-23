@@ -1,0 +1,5 @@
+results/*.jsonl
+!results/*.judge.jsonl
+!results/spend.jsonl
+results/*.log
+results/*.txt

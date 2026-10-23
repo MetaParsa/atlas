@@ -7,7 +7,7 @@ returns unusable JSON or the budget is spent.
 
 import re
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Iterator
 from typing import Literal
 from datetime import datetime, timedelta
@@ -202,8 +202,9 @@ def _on_screen(state: SessionState) -> str:
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
     """History (previous turns only) + what is on screen + this message → RouterOutput. Any failure → rule_route
     (and is recorded)."""
-    system = f"{ROUTER_PROMPT}\n\n{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."
-    messages = [{"role": "system", "content": system}, *state.history[-6:], {"role": "user", "content": text}]
+    messages = [{"role": "system", "content": ROUTER_PROMPT, "cache": True},   # unchanging: cached across turns and users
+                {"role": "system", "content": f"{_on_screen(state)} سؤال درباره‌ی همین‌ها ask_results است."},
+                *state.history[-6:], {"role": "user", "content": text}]
 
     def note(e: Exception, reply: str = "") -> None:
         if getattr(llm, "enabled", False):
@@ -266,6 +267,8 @@ def apply_patch(state: SessionState, patch: dict) -> list[str]:
                 state.conditions = state.conditions.model_copy(update={"center": Location(
                     lat=spot[0], lng=spot[1], label=" ".join(v.split())[:40], source="area")})
                 changed.append("center")
+                if spot[2]:   # found only in shop addresses: the shopper must see where we put them
+                    changed.append(f"center_by_address:{spot[2]}")
             continue
         if k not in allowed:
             continue
@@ -662,7 +665,7 @@ def show_products(state: SessionState, em: Emitter, ask: bool = True, intro: boo
         yield say(state, em, res.notes[0] if res.notes else "چیزی پیدا نکردم؛ یه جور دیگه بگو؟")
     elif not res.in_area and state.conditions.radius_km is not None:
         yield from _coverage_offer(state, em)
-    elif ask and res.question and res.question["text"] not in state.asked:   # skipped once: don't nag every turn
+    elif res.question and (ask or res.question.get("fact")) and res.question["text"] not in state.asked:   # once only
         state.asked.append(res.question["text"])
         state.remember("assistant", res.question["text"])
         yield em.emit("question", res.question)
@@ -691,7 +694,12 @@ def show_hub(state: SessionState, em: Emitter, need: Need | None) -> Iterator[st
     if state.history and state.history[-1]["role"] == "user":
         state.history[-1] = {"role": "user", "content": need.product_type or " ".join(need.keywords[:2]) or state.history[-1]["content"]}
     yield em.emit("status", {"text": "دارم می‌گردم ببینم فروشنده‌هاش بیشتر کجا جمع‌ان…", "done": False})
-    _, cats = search.candidates(need)
+    judge = _relevance_judge(state, em)
+    cands, cats = search.candidates(need, wide=judge is not None)
+    if judge and cands:   # a trade is named loosely («لوازم برقی»): its categories are those of the products that ARE it
+        j = judge(cands)
+        if j and j.kept:
+            cats = [c for c, _ in Counter(c.category for c in j.kept).most_common(2)]
     if not cats:
         yield em.emit("status", {"text": "دسته‌اش رو پیدا نکردم", "done": True})
         yield say(state, em, "این کالا رو تو داده‌ی ترب پیدا نکردم؛ یه جور دیگه بگو؟")
@@ -758,7 +766,8 @@ def show_shops(state: SessionState, em: Emitter) -> Iterator[str]:
         yield from _coverage_offer(state, em)
     elif not cards:
         yield say(state, em, res.notes[0] if res.notes else "نزدیکت فروشنده‌ای برای این مدل ثبت نشده.")
-    elif (not state.conditions.arrive_at and not state.declined_morning and not res.relaxed
+    # «open» relaxed means everything is closed at arrival: that is exactly when the next-morning offer helps
+    elif (not state.conditions.arrive_at and not state.declined_morning and (not res.relaxed or res.relaxed["field"] == "open")
           and c["found"] - c["terms_mismatch"] >= 2
           and c["closed_at_arrival"] > 0.5 * (c["found"] - c["terms_mismatch"])):
         yield from _closed_now_offer(state, em, now)
@@ -858,7 +867,7 @@ def _recheck_plan(state: SessionState, em: Emitter) -> Iterator[str]:
 
 def _condition_fields(changed: list[str]) -> list[str]:
     """Condition keys as the shop finder's relaxation names them (budget_min and budget_max are one «budget»)."""
-    return sorted({"budget_max" if k in ("budget_min", "budget_max") else k for k in changed})
+    return sorted({"budget_max" if k in ("budget_min", "budget_max") else k for k in changed if ":" not in k})
 
 
 def rerun_latest(state: SessionState, em: Emitter) -> Iterator[str]:
@@ -895,6 +904,10 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
     if changed := apply_patch(state, patch):
         state.just_changed = _condition_fields(changed)
         yield em.emit("conditions", conditions_event(state))
+    if by_address := next((c.split(":", 1)[1] for c in changed if c.startswith("center_by_address:")), None):
+        yield say(state, em, f"«{patch['area'][:40]}» رو به‌عنوان محله تو داده‌ی ترب ندارم؛ چند فروشگاه این اسم تو "
+                             f"آدرسشونه، اطراف «{by_address}». از همون‌جا نشونت می‌دم؛ اگه جای دیگه‌ای هستی بگو یا "
+                             f"از نوار بالا مکان رو بزن.")
     if isinstance(patch.get("area"), str) and "center" not in changed:   # a place the dataset has no shops around
         yield say(state, em, f"«{patch['area'][:40]}» رو تو داده‌ی ترب پیدا نکردم؛ از «{state.conditions.center.label}» "
                              f"نشونت می‌دم. می‌تونی از نوار بالا محدوده رو عوض کنی.")

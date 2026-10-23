@@ -1,0 +1,252 @@
+{
+ "summary": {
+  "run": "sample",
+  "n": 10,
+  "pass_rate": 0.5,
+  "groups": {
+   "clear": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.875
+   },
+   "messy": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.833
+   },
+   "budget": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.857
+   },
+   "copy": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "location": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.875
+   },
+   "followup": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "call": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "offtopic": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "injection": {
+    "n": 1,
+    "pass": 1,
+    "check_score": 1.0
+   },
+   "journey": {
+    "n": 1,
+    "pass": 0,
+    "check_score": 0.929
+   }
+  },
+  "p50_ms": 7815,
+  "p95_ms": 12402,
+  "card_p50_ms": 7772,
+  "card_p95_ms": 10630,
+  "tokens_in": 119687,
+  "tokens_out": 11258
+ },
+ "grades": [
+  {
+   "id": "clear-01",
+   "group": "clear",
+   "pass": false,
+   "check_score": 0.875,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'ایرپاد بلوتوثی انکر مدل Soundcore Libert']"
+     ],
+     "checks": 8
+    }
+   ]
+  },
+  {
+   "id": "messy-05",
+   "group": "messy",
+   "pass": false,
+   "check_score": 0.833,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هدست گیمینگ QCY V200 Pro', 'هدست گیمینگ بلوتوثی کیو سی وای VT200 Pro']"
+     ],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "budget-05",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.857,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "cheaper_than_before: median 10677500.0 not below 2696000.0"
+     ],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "copy-03",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "loc-01",
+   "group": "location",
+   "pass": false,
+   "check_score": 0.875,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "reply~فرض|کجایی|جمهوری|مکان: reply lacks /فرض|کجایی|جمهوری|مکان/"
+     ],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "follow-03",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "call-01",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-01",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "inj-04",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "journey-01",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.929,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'هدفون بلوتوث انکر SoundCore Space Q45']"
+     ],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 5
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  }
+ ]
+}

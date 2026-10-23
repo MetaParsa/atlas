@@ -183,7 +183,7 @@ class LLMClient:
 
     def _openai(self, p: "Provider", model, messages, max_tokens, json_mode, tools):
         """An OpenAI-compatible gateway: (text, tool_calls, usage, billed tokens)."""
-        body: dict = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
+        body: dict = {"model": model, "messages": [{k: v for k, v in m.items() if k != "cache"} for m in messages], "max_tokens": max_tokens, "temperature": 0.2}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         if tools:
@@ -204,7 +204,9 @@ class LLMClient:
         Thinking off (or the nearest the model allows) and low effort: every call is a short, latency-sensitive step."""
         system, msgs = to_anthropic_messages(messages)
         if json_mode:
-            system = (system + "\n\n" if system else "") + "Reply with one JSON object only, no prose and no code fence."
+            note = "Reply with one JSON object only, no prose and no code fence."
+            system = (system + [{"type": "text", "text": note}] if isinstance(system, list)
+                      else (system + "\n\n" if system else "") + note)
         kw: dict = {"model": model, "max_tokens": max_tokens, "messages": msgs,
                     "thinking": _quick_thinking(model), "output_config": {"effort": "low"}}
         if model.startswith("claude-sonnet-5-5"):   # a refused request is re-run by Anthropic's default fallback model
@@ -226,7 +228,11 @@ class LLMClient:
         text = "".join(b.text for b in resp.content if b.type == "text")
         calls = [{"id": b.id, "type": "function", "function": {"name": b.name, "arguments": json.dumps(b.input, ensure_ascii=False)}}
                  for b in resp.content if b.type == "tool_use"]
-        return text, calls, {"prompt_tokens": resp.usage.input_tokens, "completion_tokens": resp.usage.output_tokens}, used
+        u = resp.usage
+        usage = {"prompt_tokens": u.input_tokens, "completion_tokens": u.output_tokens,   # input_tokens = uncached part
+                 "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+                 "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0}
+        return text, calls, usage, used
 
     def _note(self, role: str, res: LLMResult, tokens: int) -> None:
         self.log.append({"role": role, "provider": res.provider, "model": res.model, "tokens": tokens, "ms": res.ms})
@@ -248,12 +254,16 @@ class AnthropicProvider:
         return self._client
 
 
-def to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
-    """OpenAI-shaped chat (system/user/assistant+tool_calls/tool, image_url data URLs) → (system, Claude messages)."""
-    system, out = [], []
+def to_anthropic_messages(messages: list[dict]) -> tuple[str | list[dict], list[dict]]:
+    """OpenAI-shaped chat (system/user/assistant+tool_calls/tool, image_url data URLs) → (system, Claude messages).
+    A system message marked `"cache": True` (a long, unchanging prompt) becomes a cached block placed first: the system
+    is then a list of text blocks, and every later turn reads that prefix at a tenth of the price."""
+    system, out, cached = [], [], []
     for m in messages:
         role, content = m.get("role"), m.get("content")
-        if role == "system":
+        if role == "system" and m.get("cache") and isinstance(content, str) and content:
+            cached.append({"type": "text", "text": content, "cache_control": {"type": "ephemeral"}})
+        elif role == "system":
             system.append(content if isinstance(content, str) else "")
         elif role == "tool":
             out.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": m.get("tool_call_id", ""),
@@ -280,7 +290,10 @@ def to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
             out.append({"role": role, "content": content})
     while out and out[0]["role"] != "user":   # the conversation must open with the user (trimmed history may not)
         out.pop(0)
-    return "\n\n".join(s for s in system if s), out
+    plain = "\n\n".join(s for s in system if s)
+    if cached:
+        return cached + ([{"type": "text", "text": plain}] if plain else []), out
+    return plain, out
 
 
 SONNET = "claude-sonnet-5-5"   # every role runs on Claude Sonnet 5.5; MODEL_* env can still override

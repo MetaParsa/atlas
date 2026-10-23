@@ -18,6 +18,7 @@ from torob.logic.geo import bbox, haversine_m
 from torob.models import Chip, Conditions, Need
 
 SELLER_FLOOR = 3          # A1: a pick needs ≥ 3 sellers nearby, relaxed to 2, then 1, saying so
+AFFORDABLE_FIRST = 28     # of the 40 matches the relevance judge reads, this many may be the affordable ones
 OVER_BUDGET_SLACK = 0.10  # up to 10% over budget is shown («۷٪ بالاتر از بودجه، ولی …»); more is not shown as a fit
 FRESH_DAYS = 30
 _SKIP_SPEC_KEYS = {"نام محصول", "برند", "شرکت سازنده", "سازنده", "تاریخ معرفی", "مدل", "نام", "کد محصول"}
@@ -243,6 +244,25 @@ def _named_first(need: Need, reps: list[search.Candidate]) -> list[search.Candid
     return sorted(reps, key=lambda c: -round(cover(c), 1))
 
 
+def _affordable_first(reps: list[search.Candidate], budget: int | None, cheap: bool) -> list[search.Candidate]:
+    """The relevance judge reads only the top matches. With a budget (or «ارزون»), the affordable ones usually rank
+    below the famous expensive ones, so the judge never saw them and the shopper got «nothing under 2 million».
+    Among the best text matches, up to 28 priced within reach go first, then the rest in text order: the judge still
+    sees the real product above the budget, so if every cheap match is an accessory the «nothing fits» path still has
+    the right products to offer."""
+    head, tail = reps[:150], reps[150:]
+    if budget:
+        fits = lambda c: bool(c.price_median) and c.price_median <= budget * (1 + OVER_BUDGET_SLACK)
+    elif cheap and len(head) > 6:
+        cut = sorted(c.price_median for c in head if c.price_median)[len(head) // 2] if any(c.price_median for c in head) else 0
+        fits = lambda c: bool(c.price_median) and c.price_median <= cut
+    else:
+        return reps
+    first = [c for c in head if fits(c)][:AFFORDABLE_FIRST]
+    seen = {c.product_id for c in first}
+    return first + [c for c in head if c.product_id not in seen] + tail
+
+
 def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model."""
     cands, cats = search.candidates(need, wide=judge is not None)   # a judge sees a wider net (the model's categories too)
@@ -252,6 +272,8 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
 
     reps, same_title = _dedupe(cands)
     reps = _named_first(need, _brand_filter(need, reps, notes))
+    if judge:
+        reps = _affordable_first(reps, cond.budget_max, need.price_pref == "cheap")
     n_found, n_matching, copies, steps = len(reps), None, set(), []
     if judge:
         j = judge(reps)
@@ -295,10 +317,14 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         else:   # nothing fits: show the cheapest real options and offer a realistic budget, never «۵۹۴۰۰٪ بالاتر»
             pool = sorted(pool, key=lambda c: price[c.product_id])[:2]
             cheapest = price[pool[0].product_id]
-            notes.append(f"چیزی زیر {format_price_short(budget)} پیدا نشد؛ ارزان‌ترین {'نزدیکت' if in_area else 'در تهران'} "
-                         f"حدود {format_price_short(cheapest)} است.")
+            # the note quotes the same «از …» figure the card shows, not the typical price it was ranked by
+            low = min((min(st.prices) if (st := stats.get(c.product_id)) and st.prices and in_area else c.price_min or price[c.product_id])
+                      for c in pool)
+            notes.append(f"چیزی زیر {format_price_short(budget)} پیدا نشد؛ ارزان‌ترین‌ها {'نزدیکت' if in_area else 'در تهران'} "
+                         f"از {format_price_short(low)} شروع می‌شن.")
             target = _round_budget(cheapest)
-            question = {"text": f"بودجه رو تا {format_price_short(target)} ببرم بالا؟", "chips": [
+            # `fact`: this question is about what the data says (nothing fits), so it outranks the model's softer ones
+            question = {"text": f"بودجه رو تا {format_price_short(target)} ببرم بالا؟", "fact": True, "chips": [
                 Chip(label=f"آره، تا {format_price_short(target)}", kind="direct_call", tool="set_budget",
                      args={"budget_max": target}).model_dump(),
                 Chip(label="نه", kind="direct_call", tool="noop", args={}).model_dump()]}

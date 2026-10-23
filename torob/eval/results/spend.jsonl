@@ -1,0 +1,6 @@
+{"run": "dry", "kind": "app", "in": 0, "out": 0, "calls": 0, "usd": 0.0, "at": "15:55"}
+{"run": "dry", "kind": "app", "in": 0, "out": 0, "calls": 0, "usd": 0.0, "at": "15:56"}
+{"run": "sample", "kind": "app", "in": 119687, "out": 11258, "calls": 29, "usd": 0.352, "at": "15:59"}
+{"run": "sample", "kind": "judge", "in": 21857, "out": 2293, "usd": 0.0666, "at": "16:00"}
+{"run": "r1", "kind": "app", "in": 466059, "out": 130017, "calls": 335, "cache_read": 957720, "cache_write": 5205, "usd": 2.4368, "at": "16:24"}
+{"run": "r1", "kind": "judge", "in": 297227, "out": 35283, "usd": 0.9473, "at": "16:34"}

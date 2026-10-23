@@ -7,6 +7,7 @@ distinct sellers of it are; each answer says how many, out of how many in Tehran
 («طبق داده‌ی ترب»), not folklore. Numbers are code; nothing here calls a model.
 """
 
+from collections import Counter
 from datetime import datetime
 from functools import lru_cache
 
@@ -71,22 +72,27 @@ def hubs(categories: tuple[str, ...] = (), product_id: str | None = None) -> dic
     return {"total": total, "buildings": buildings, "areas": areas, "spread": spread}
 
 
-def locate(name: str) -> tuple[float, float] | None:
+def locate(name: str) -> tuple[float, float, str | None] | None:
     """A neighbourhood («تجریش»), street («ولیعصر») or passage the shopper names, placed by the dataset's own shops:
-    the median position of shops in that area, or whose address or building names it. None if fewer than 3."""
+    the median position of shops in that area, or whose address or building names it. None if fewer than 3.
+    The third value is None for a neighbourhood match; for an address match it is the neighbourhood those shops are in
+    («پردیس» the city is not in the data, but «سینما پردیس» in an address is), so the shopper can be told."""
     name = " ".join(str(name).split())[:40]
     if len(name) < 2:
         return None
     con = store.get()
-    rows = con.execute("SELECT lat, lon FROM shops WHERE lat IS NOT NULL AND area = ?", (name,)).fetchall()
+    rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND area = ?", (name,)).fetchall()
+    where = None
     if len(rows) < 3:
         like = f"%{name}%"
-        rows = con.execute("SELECT lat, lon FROM shops WHERE lat IS NOT NULL AND (address LIKE ? OR building LIKE ?) "
+        rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND (address LIKE ? OR building LIKE ?) "
                            "LIMIT 500", (like, like)).fetchall()
+        areas = Counter(r["area"] for r in rows if r["area"])
+        where = areas.most_common(1)[0][0] if areas else "مرکز تهران"
     if len(rows) < 3:
         return None
     lats, lons = sorted(r["lat"] for r in rows), sorted(r["lon"] for r in rows)
-    return lats[len(lats) // 2], lons[len(lons) // 2]
+    return lats[len(lats) // 2], lons[len(lons) // 2], where
 
 
 def hub_sentence(subject: str, h: dict) -> str:

@@ -45,6 +45,13 @@ html, body { margin: 0; background: var(--bg); color: var(--ink); }
 body { font-size: 14px; line-height: 1.75; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 button, input { font: inherit; color: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
+/* Torob-sized pills (32–40 px) keep their look, but every one of them takes a ≥ 44 px tap: an invisible layer grows
+   the hit area to 44 px tall (and the round send button to 44 px wide), centred on the visible button. */
+.chip, .strip button, .pcard .btn, .scard .btn, details > summary, #send { position: relative; }
+.chip::before, .strip button::before, .pcard .btn::before, .scard .btn::before, details > summary::before, #send::before {
+  content: ""; position: absolute; inset-inline: 0;
+  top: min(0px, calc((100% - 44px) / 2)); bottom: min(0px, calc((100% - 44px) / 2)); }
+#send::before { inset-inline: -4px; }
 :focus-visible { outline: none; box-shadow: var(--ring); }
 svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 bdi { unicode-bidi: isolate; }
