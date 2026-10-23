@@ -318,7 +318,10 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         return 0.5 * rel[c.product_id] + 0.3 * math.log1p(avail[c.product_id]) / math.log1p(max_avail) + 0.2 * cheapness
 
     chosen: list[search.Candidate] = []
-    for key in (lambda c: -value_score(c), lambda c: (price[c.product_id], c.rank), lambda c: (-avail[c.product_id], c.rank)):
+    keys = (lambda c: -value_score(c), lambda c: (price[c.product_id], c.rank), lambda c: (-avail[c.product_id], c.rank))
+    if need.price_pref == "cheap":   # «ارزون‌ترش»: every slot goes to the cheapest matches, not «most sellers»
+        keys = (lambda c: (price[c.product_id], c.rank),) * 3
+    for key in keys:
         for c in sorted(pool, key=key):
             if all(not search.near_duplicate(c.title_norm, x.title_norm) for x in chosen):
                 chosen.append(c)
