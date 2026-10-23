@@ -35,6 +35,7 @@ const ICONS = {
   pin: ["M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z", "c12,10,2.5"],
   clock: ["c12,12,9", "M12 7v5l3 2"],
   box: ["M21 8l-9-5-9 5 9 5 9-5z", "M3 8v8l9 5 9-5V8", "M12 13v8"],
+  msg: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", "M8 9h8", "M8 13h5"],
   phone: ["M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"],
   store: ["M3 9l1.5-5h15L21 9", "M4 9v11h16V9", "M3 9h18", "M9 20v-6h6v6"],
   nav: ["M3 11l19-9-9 19-2-8-8-2z"],
@@ -318,7 +319,7 @@ const handlers = {
     callNames[d.call_id] = d.shop_name || "فروشنده";
     Radish.set("call");
     stream.append(el("div", { class: "call sim", id: `call-${d.call_id}` },
-      el("div", { class: "head" }, el("span", { class: "ring" }, icon("phone")), el("span", {}, d.title, simTag())),
+      el("div", { class: "head" }, el("span", { class: "ring" }, icon(d.channel === "sms" ? "msg" : "phone")), el("span", {}, d.title, simTag())),
       el("div", { class: "why", text: d.reasons }),
       d.real_shop_note ? el("div", { class: "note", text: d.real_shop_note }) : null));
   },

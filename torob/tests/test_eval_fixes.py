@@ -182,3 +182,68 @@ def test_known_tehran_places_are_placed_even_with_few_shops_there():
     from torob.agents.places import TEHRAN_PLACES, locate
     lat, lng, where = locate("میدان ونک")
     assert (lat, lng) == TEHRAN_PLACES["ونک"] and where is None
+
+
+def _to_call(clock_at):
+    """A search → sellers → the first shop shown, at a demo time when shops are open."""
+    from core.agent_loop import Emitter
+    from torob import clock
+    from torob.models import Chip, SessionState
+    from torob.router import run_turn
+    clock.set_now(clock_at)
+    st, em = SessionState(), Emitter("s")
+    list(run_turn(_rule_llm(), st, em, text="پاوربانک"))
+    card = next(d for e, d in em.events if e == "product_cards")["items"][0]
+    em = Emitter("s")
+    list(run_turn(_rule_llm(), st, em, chip=Chip(**card["button"])))
+    shops = next(d for e, d in em.events if e == "shop_cards")["items"]
+    return st, shops[0]
+
+
+def test_unanswered_call_offers_a_simulated_text_that_agrees_with_the_call():
+    from datetime import datetime
+
+    import pytest
+    from torob import clock, store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.agents import call as call_engine
+    from torob.models import Chip
+    from torob.router import run_turn
+    try:
+        st, shop = _to_call(datetime(2026, 10, 22, 12, 0))
+        call_engine.set_overrides({shop["shop_id"]: "no_answer"})
+        em = Emitter("s")
+        list(run_turn(_rule_llm(), st, em, chip=Chip(**shop["button"])))
+        offer = next(d for e, d in em.events if e == "question" and "پیامک" in d["text"])
+        sms = next(c for c in offer["chips"] if c["tool"] == "sms_shop")
+        call_engine.set_overrides(None)
+        em = Emitter("s")
+        list(run_turn(_rule_llm(), st, em, chip=Chip(**sms)))
+        start = next(d for e, d in em.events if e == "call_start")
+        assert start["channel"] == "sms" and start["simulated"] is True
+        label = next(d for e, d in em.events if e == "call_result")["label"]
+        assert "شبیه‌سازی" in label and "پیامک" in label
+        o, res = __import__("torob.router", fromlist=["_find_offer"])._find_offer(st, shop["shop_id"])
+        truth = call_engine.make_truth(o, res.product, clock.now())
+        result = next(d for e, d in em.events if e == "call_result")["result"]
+        if result["outcome"] != "no_answer":
+            assert result["in_stock"] == truth.in_stock   # the text and the call never disagree
+    finally:
+        call_engine.set_overrides(None)
+        clock.set_now(None)
+
+
+def test_a_text_to_a_shop_not_on_screen_is_refused():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.models import Chip, SessionState
+    from torob.router import run_turn
+    em = Emitter("s")
+    list(run_turn(_rule_llm(), SessionState(), em, chip=Chip(label="x", kind="direct_call", tool="sms_shop",
+                                                              args={"shop_id": "shop_fake", "product_id": "product_fake"})))
+    assert any(e == "error" for e, _ in em.events) and not any(e == "call_start" for e, _ in em.events)

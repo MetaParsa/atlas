@@ -545,12 +545,29 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
                                   "location": result.location, "hold_until": result.hold_until,
                                   "style": "simulated"})
     state.calls[call_id] = result.as_dict()
+    yield from _after_contact(state, em, o, res, result, hold, offer_sms=True)
+
+
+def _after_contact(state: SessionState, em: Emitter, o, res, result, hold: bool, offer_sms: bool = False) -> Iterator[str]:
+    """What follows a call or a text: a plan when the shop has it, else an alternative (after no answer to a call,
+    first the offer to text the same shop)."""
+    s, shop_id = o.shop, o.shop["shop_id"]
+    now = clock.now()
     if result.outcome != "ok":
         key = f"{state.selected_product_id}|{shop_id}"
         if key not in state.tried_shop_ids:
             state.tried_shop_ids.append(key)
+        if offer_sms and result.outcome == "no_answer":
+            sms = Chip(label="پیامک بده", kind="direct_call", tool="sms_shop",
+                       args={"shop_id": shop_id, "product_id": res.product["product_id"]}).model_dump()
+            text = f"{s['name']} جواب نداد. براش پیامک بفرستم؟ (شبیه‌سازی)"
+            state.remember("assistant", text)
+            yield em.emit("question", {"text": text, "chips": [sms]})
         yield from _offer_alternative(state, em, s, result.outcome)
         return
+    key = f"{state.selected_product_id}|{shop_id}"
+    if key in state.tried_shop_ids:   # it didn't answer the phone but did answer the text
+        state.tried_shop_ids.remove(key)
     tried = _excluded(state) | {shop_id}
     backup = next((x for x in res.items + res.more if x.shop["shop_id"] not in tried and x.open_state != "no"), None)
     same_product_plan = state.plan and state.plan.get("product_id") == state.selected_product_id
@@ -559,7 +576,7 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
         yield em.emit("plan", {"replace": True, **state.plan})
     else:   # a second shop also confirmed: let the user move the plan, don't switch silently
         chip = Chip(label="برنامه رو بذار روی این", kind="direct_call", tool="set_plan",
-                    args={"call_id": call_id}).model_dump()
+                    args={"call_id": result.call_id}).model_dump()
         yield em.emit("question", {"text": f"{s['name']} هم داره. برنامه رو ببرم روی این؟",
                                    "chips": [chip, Chip(label="نه", kind="direct_call", tool="noop").model_dump()]})
         return
@@ -567,6 +584,38 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
         chip = followup.call_chip(shop_id, res.product["product_id"], "بپرس نگهش دارن؟", hold=True)
         yield em.emit("question", {"text": "بپرسم تا رسیدنت نگهش دارن؟", "chips": [chip, Chip(
             label="نه", kind="direct_call", tool="noop").model_dump()]})
+
+
+@direct("sms_shop", CallShopArgs)
+def _chip_sms_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iterator[str]:
+    """The fallback when a call goes unanswered: one text to the same shop, and its reply (simulated, labelled)."""
+    if args.shop_id not in state.call_ok_ids or args.product_id != state.selected_product_id:
+        yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
+        return
+    o, res = _find_offer(state, args.shop_id)
+    if o is None:
+        yield em.emit("error", {"text": "این فروشگاه دیگه این مدل رو نداره."})
+        return
+    sms_id = f"m{len(state.calls) + 1}"
+    lv = live_torob.CURRENT
+    live_price = lv.cached_shop_price(res.product["product_id"], o.shop) if lv else None
+    sent, reply, result = call_engine.run_sms(o, res.product, sms_id, live_price=live_price)
+    s = o.shop
+    yield em.emit("call_start", {"call_id": sms_id, "shop_id": s["shop_id"], "shop_name": s["name"], "channel": "sms",
+                                 "title": f"پیامک به {s['name']}", "simulated": True,
+                                 "reasons": "تلفن رو جواب نداد؛ همون سؤال‌ها رو پیامک می‌کنم.",
+                                 "real_shop_note": "به این فروشگاه واقعاً پیامکی فرستاده نشد." if s["name_is_real"] else None})
+    yield em.emit("call_line", {"call_id": sms_id, "who": "agent", "text": sent})
+    if reply:
+        yield em.emit("call_line", {"call_id": sms_id, "who": "shop", "text": reply})
+    label = call_engine.sms_label(result)
+    yield em.emit("call_result", {"call_id": sms_id, "result": result.as_dict(), "label": label})
+    stock = {"ok": "simulated_confirmed", "unavailable": "simulated_unavailable", "no_answer": "no_answer"}[result.outcome]
+    yield em.emit("card_update", {"block_id": "shops", "shop_id": s["shop_id"], "stock": stock, "label": label,
+                                  "price_change": call_engine.price_change_text(result), "location": result.location,
+                                  "hold_until": result.hold_until, "style": "simulated"})
+    state.calls[sms_id] = result.as_dict()
+    yield from _after_contact(state, em, o, res, result, hold=True)
 
 
 class SetPlanArgs(DirectTool):

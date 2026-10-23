@@ -304,3 +304,51 @@ def price_change_text(r: CallResult) -> str | None:
     if r.price_registered is None:
         return f"قیمت امروز {format_toman(r.price_today)} (قیمت ثبت‌شده نداشت، شبیه‌سازی)"
     return f"{format_toman(r.price_registered)} → {format_toman(r.price_today)} (شبیه‌سازی)"
+
+
+# --- SMS: the fallback when a call goes unanswered (simulated, like the call) ----------------------------------
+
+SMS_NO_REPLY_RATE = 0.3   # a busy shopkeeper may not text back either
+
+
+def run_sms(o: ShopOffer, product: dict, sms_id: str, live_price: int | None = None) -> tuple[str, str | None, CallResult]:
+    """One text to the shop and, usually, its reply. The facts are the call's own (`make_truth`, same seed), so a
+    text and a call to the same shop never disagree; only whether the shopkeeper writes back is drawn separately.
+    A shop that is closed now doesn't reply until it opens."""
+    now = clock.now()
+    truth = make_truth(o, product, now, live_price)
+    state, _ = H.status_at(H.from_json(o.shop["hours"]), now)
+    replies = state != "closed" and _rng(o.shop["shop_id"] + "|sms", product["product_id"]).random() >= SMS_NO_REPLY_RATE
+    title = product["title"].split("|")[0].strip()[:60]
+    sent = f"سلام، از طرف یه مشتری تربچه: «{title}» رو دارید؟ قیمت امروزش چنده؟ اگه دارید تا وقتی برسم نگهش می‌دارید؟"
+    reply = None
+    if replies and truth.in_stock:
+        parts = ["سلام، داریم."]
+        if truth.price_today:
+            parts.append(f"امروز {format_toman(truth.price_today)} تومن.")
+        if truth.hold_until:
+            parts.append(f"تا {to_fa_digits(truth.hold_until)} براتون نگه می‌داریم.")
+        if truth.location:
+            parts.append(f"{truth.location}.")
+        reply = " ".join(parts)
+    elif replies:
+        reply = "سلام، متأسفانه فعلاً تموم کردیم."
+    outcome = "no_answer" if not replies else ("ok" if truth.in_stock else "unavailable")
+    diff = round((truth.price_today / o.price_min - 1) * 100) if outcome == "ok" and truth.price_today and o.price_min else None
+    res = CallResult(
+        call_id=sms_id, shop_id=o.shop["shop_id"], product_id=product["product_id"], answered=replies,
+        in_stock=truth.in_stock if replies else None, price_today=truth.price_today if outcome == "ok" else None,
+        price_registered=o.price_min, price_diff_pct=diff, closes_today=truth.closes_today if replies else None,
+        credit=None, location=truth.location if outcome == "ok" else None,
+        hold_until=truth.hold_until if outcome == "ok" else None, at=now.strftime("%H:%M"), outcome=outcome,
+        asked=["stock", "price", "hold"])
+    return sent, reply, res
+
+
+def sms_label(r: CallResult) -> str:
+    t = to_fa_digits(r.at)
+    if r.outcome == "no_answer":
+        return f"پیامک بی‌جواب (شبیه‌سازی) {t}"
+    if r.outcome == "unavailable":
+        return f"جواب پیامک: ناموجود (شبیه‌سازی) {t}"
+    return f"جواب پیامک: موجود (شبیه‌سازی) {t}"
