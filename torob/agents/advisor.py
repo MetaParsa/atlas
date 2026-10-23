@@ -206,7 +206,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
 
     reps, same_title = _dedupe(cands)
     reps = _brand_filter(need, reps, notes)
-    n_found, n_matching, copies = len(reps), None, set()
+    n_found, n_matching, copies, steps = len(reps), None, set(), []
     if judge:
         j = judge(reps)
         if j is None:     # no usable judgement: back to the narrow, rule-picked categories
@@ -215,7 +215,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
             return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی که دقیقاً همین باشه پیدا نکردم؛ یه جور دیگه بگو یا عکسش رو بفرست."],
                                  [], None, 0, False, n_candidates=n_found, n_matching=0)
         else:             # only the products that are the thing asked for compete
-            reps, copies, n_matching = j.kept, j.copies, len(j.kept)
+            reps, copies, n_matching, steps = j.kept, j.copies, len(j.kept), j.budget_steps
     stats = area_stats([c.product_id for c in reps[:150]], cond)
     named = _named(need, reps, stats, cond)
     budget = cond.budget_max          # the strip is the single source of truth (the router copies need.budget_max)
@@ -291,7 +291,7 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         notes.append("بعضی از این‌ها فقط یک فروشنده‌ی نزدیک دارن." if m == 1 else
                      "بعضی از این‌ها فقط دو فروشنده‌ی نزدیک دارن.")
     if question is None and not named:
-        question = _question(need, cond, price, picks)
+        question = _question(need, cond, price, picks, steps)
     return AdvisorResult(picks, cats, notes, _compare_rows(picks), None if named else question,
                          floor_used, in_area, named, n_candidates=n_found, n_matching=n_matching,
                          n_nearby=sum(1 for c in reps if stats.get(c.product_id, AreaStat()).sellers > 0))
@@ -357,13 +357,27 @@ def why_line(p: Pick, budget: int | None = None) -> str:
     return " ".join(parts).replace(" ،", "،")
 
 
-def _question(need: Need, cond: Conditions, price: dict, picks: list[Pick]) -> dict | None:
-    """At most one splitting question, as direct_call chips (no LLM, no re-parsing)."""
+def budget_tiers(prices: list[int], suggested: list[int] = ()) -> list[int]:
+    """Three budget buttons for these products. The model's suggestion (it knows who the item is for) when it falls
+    inside the real prices; else the lower part of the price spread, so a few luxury listings don't set the buttons."""
+    vals = sorted(v for v in prices if v)
+    if not vals:
+        return []
+    lo, hi = vals[0], vals[min(len(vals) - 1, int(len(vals) * 0.9))]
+    ok = sorted({_round_budget(s) for s in suggested if lo * 0.8 <= s <= hi * 1.1})
+    if len(ok) >= 2:
+        return ok[:3]
+    pick = lambda q: vals[min(len(vals) - 1, int(len(vals) * q))]
+    return sorted({_round_budget(pick(0.2)), _round_budget(pick(0.45)), _round_budget(pick(0.7))})
+
+
+def _question(need: Need, cond: Conditions, price: dict, picks: list[Pick], steps: list[int] = ()) -> dict | None:
+    """At most one splitting question, as direct_call chips (no re-parsing). Budget buttons: the model's suggestion,
+    clamped to the matching products' real prices (budget_tiers)."""
     if not cond.budget_max and len(price) >= 3:
         vals = sorted(v for v in price.values() if v)
         if vals and vals[-1] / vals[0] >= 3:
-            tiers = sorted({_round_budget(vals[len(vals) // 4]), _round_budget(vals[len(vals) // 2]),
-                            _round_budget(vals[3 * len(vals) // 4])})
+            tiers = budget_tiers(vals, steps)
             chips = [Chip(label=f"تا {format_price_short(t)}", kind="direct_call", tool="set_budget",
                           args={"budget_max": t}) for t in tiers if t > 0]
             chips.append(Chip(label="فرقی نداره", kind="direct_call", tool="set_budget", args={"budget_max": None}))

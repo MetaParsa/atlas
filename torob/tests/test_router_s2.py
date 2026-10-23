@@ -134,3 +134,11 @@ def test_nothing_found_is_said_once():
     events, _ = turn(s, text="ززقپچخ طلقثی")
     kinds = [e for e, _ in events]
     assert "product_cards" not in kinds and kinds.count("message") == 1
+
+
+def test_budget_buttons_follow_the_matching_products_not_luxury_outliers():
+    from torob.agents.advisor import budget_tiers
+    prices = [900_000, 1_200_000, 1_500_000, 2_000_000, 2_500_000, 3_000_000, 4_000_000, 60_000_000, 200_000_000]
+    assert budget_tiers(prices, [1_500_000, 3_000_000, 5_000_000]) == [1_500_000, 3_000_000, 5_000_000]   # the model, inside real prices
+    assert max(budget_tiers(prices)) <= 4_000_000                                                    # no model: lower spread
+    assert budget_tiers(prices, [500_000_000]) == budget_tiers(prices)                               # out of range: ignored

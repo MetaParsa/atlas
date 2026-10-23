@@ -300,8 +300,11 @@ const handlers = {
   error(d) { stream.append(el("div", { class: "error", text: d.text })); oops(); },
   conditions(d) { setConditions(d); },
   question(d) {
+    const budget = (d.chips || []).some((c) => c.tool === "set_budget");
+    if (budget) lastBudgetSteps = d.chips.filter((c) => c.args?.budget_max).map((c) => [c.args.budget_max, c.label]);
     stream.append(el("div", { class: "question" }, agentRow(el("div", { class: "bubble agent", text: d.text })),
-      el("div", { class: "chips" }, (d.chips || []).map((c) => chipButton(c)))));
+      el("div", { class: "chips" }, (d.chips || []).map((c) => chipButton(c)),
+        budget ? el("button", { type: "button", class: "chip", onclick: () => SHEETS.budget() }, icon("tag"), el("span", { text: "مبلغ دلخواه" })) : null)));
     Radish.set("text");
   },
   product_cards(d) { hasResults = true; strip.hidden = false; putBlock("blk-products", productBlock(d)); Radish.set("happy"); },
@@ -703,6 +706,15 @@ function renderPlan(p, quiet = false) {
 
 const RADII = [[1, "۱ کیلومتر"], [3, "۳ کیلومتر"], [10, "۱۰ کیلومتر"], [null, "کل تهران"]];
 const BUDGETS = [[1e6, "تا ۱ میلیون"], [3e6, "تا ۳ میلیون"], [10e6, "تا ۱۰ میلیون"], [50e6, "تا ۵۰ میلیون"], [null, "فرقی نداره"]];
+let lastBudgetSteps = null;   // the steps suggested for the current search (the budget question's buttons)
+// «۲٫۵» = 2.5 million, «۸۰۰ هزار» = 800 thousand, «۲۵۰۰۰۰۰» = toman as written
+function parseBudget(text) {
+  const t = toLatin(text).replace(/[,٬\s]/g, "");
+  const n = parseFloat(t.replace(/[^\d.]/g, ""));
+  if (!(n > 0)) return null;
+  if (/هزار|k/i.test(t)) return Math.round(n * 1e3);
+  return n >= 1000 ? Math.round(n) : Math.round(n * 1e6);
+}
 const PAYMENTS = [["any", "همه"], ["credit", "قسطی"], ["credit_in_person", "قسطی حضوری"]];
 const OPENS = [["at_arrival", "باز تا وقتی برسم"], ["now", "باز الان"], ["any", "مهم نیست"]];
 
@@ -756,15 +768,19 @@ function opts(list, current, apply) {
 const SHEETS = {
   radius: () => openSheet("محدوده", () => opts(RADII, cond ? cond.radius_km : 3, (v) => refine({ radius_km: v }))),
   budget: () => openSheet("بودجه", () => {
-    const input = el("input", { type: "text", inputmode: "decimal", placeholder: "مثلاً ۲٫۵ (میلیون تومان)" });
+    const input = el("input", { type: "text", inputmode: "decimal", placeholder: "مبلغ دلخواه، مثلاً ۲٫۵ میلیون یا ۸۰۰ هزار" });
     const err = el("div", { class: "error" });
-    return el("div", {}, opts(BUDGETS, cond ? cond.budget_max : null, (v) => refine({ budget_max: v })),
+    const apply = () => {
+      const v = parseBudget(input.value);
+      if (!v || v < 1000) { err.textContent = "یه مبلغ بنویس، مثلاً ۲٫۵ میلیون یا ۸۰۰ هزار"; return; }
+      sheet.close(); refine({ budget_max: v });
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); apply(); } });
+    const steps = lastBudgetSteps?.length ? [...lastBudgetSteps, [null, "فرقی نداره"]] : BUDGETS;
+    setTimeout(() => input.focus(), 50);
+    return el("div", {}, opts(steps, cond ? cond.budget_max : null, (v) => refine({ budget_max: v })),
       el("div", { style: "margin-top:8px" }, input, err,
-        el("button", { type: "button", class: "btn blue", text: "اعمال", onclick: () => {
-          const m = parseFloat(toLatin(input.value));
-          if (!(m > 0)) { err.textContent = "یه عدد بنویس، مثلاً ۲٫۵"; return; }
-          sheet.close(); refine({ budget_max: Math.round(m * 1e6) });
-        } })));
+        el("button", { type: "button", class: "btn blue", text: "اعمال", onclick: apply })));
   }),
   payment: () => openSheet("پرداخت", () => el("div", {},
     opts(PAYMENTS, cond ? cond.payment : "any", (v) => refine({ payment: v })),

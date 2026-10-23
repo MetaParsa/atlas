@@ -36,13 +36,19 @@ For EACH product decide whether a sensible salesperson would show it for this re
 Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
 or its price is a small fraction of other listings of the same model in this list.
 
-Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false}}, ...]}} covering every index."""
+Finally suggest "budget_steps": three budgets in toman, ascending (entry, middle, generous), that a typical shopper
+with this request would pick between, judged from the prices of the products you marked show=true and from who it is
+for (an everyday item or a gift doesn't need to reach the most expensive listings).
+
+Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false}}, ...], "budget_steps": [a, b, c]}}
+covering every index."""
 
 
 @dataclass
 class Judgement:
     kept: list
     copies: set[str] = field(default_factory=set)   # product_ids that look like copies
+    budget_steps: list[int] = field(default_factory=list)   # the model's budget buttons (the advisor clamps them)
 
 
 def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
@@ -55,7 +61,9 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
     try:
         res = llm.complete("judge", [{"role": "user", "content": PROMPT.format(want=want.strip(), rows=rows)}],
                            session_id=session_id, max_tokens=1500, json_mode=True)
-        verdicts = {int(v["i"]): v for v in res.json().get("items", []) if str(v.get("i", "")).isdigit()}
+        reply = res.json()
+        verdicts = {int(v["i"]): v for v in reply.get("items", []) if str(v.get("i", "")).isdigit()}
+        steps = [int(x) for x in (reply.get("budget_steps") or []) if isinstance(x, (int, float)) and x > 0][:3]
     except Exception:   # LLM off, budget spent, bad JSON: the rule-based result stands
         return None
     kept = [c for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True]
@@ -63,4 +71,4 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
         return None
     copies = {c.product_id for i, c in enumerate(items) if verdicts.get(i, {}).get("show") is True
               and verdicts[i].get("copy") is True}
-    return Judgement(kept, copies)
+    return Judgement(kept, copies, steps)
