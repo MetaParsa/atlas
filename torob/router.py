@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from core.agent_loop import Emitter
-from core.llm import LLMClient
+from core.agent_loop import Emitter, plain_text
+from core.llm import LLMClient, LLMError
 from core.text import format_million, format_price_short, format_toman, normalize_fa, to_fa_digits, to_latin_digits
 from torob import search
 from torob import store
@@ -131,14 +131,37 @@ ROUTER_FALLBACKS: deque = deque(maxlen=20)   # why the model's reading wasn't us
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
     """History (previous turns only) + this message → RouterOutput. Any failure → rule_route (and is recorded)."""
     messages = [{"role": "system", "content": ROUTER_PROMPT}, *state.history[-6:], {"role": "user", "content": text}]
-    res = None
+
+    def note(e: Exception, reply: str = "") -> None:
+        if getattr(llm, "enabled", False):
+            ROUTER_FALLBACKS.append({"at": time.strftime("%H:%M:%S"), "error": f"{type(e).__name__}: {str(e)[:200]}",
+                                     "reply": reply[:300]})
+
     try:
         res = llm.complete("router", messages, session_id=session_id, max_tokens=900, json_mode=True)   # Persian JSON is token-heavy
         return RouterOutput.model_validate(res.json())
-    except Exception as e:   # LLM error, budget spent, bad JSON, schema mismatch: the app keeps working on rules
-        if getattr(llm, "enabled", False):
-            ROUTER_FALLBACKS.append({"at": time.strftime("%H:%M:%S"), "error": f"{type(e).__name__}: {str(e)[:200]}",
-                                     "reply": (res.text[:300] if res is not None else "")})
+    except LLMError as e:
+        prose = getattr(e, "text", "")
+        if not prose:   # LLM error or budget spent: the app keeps working on rules
+            note(e)
+            return rule_route(text)
+        # To «سلام» or «اسمت چیه؟» Haiku sometimes just talks back. Ask once more for the JSON (the model decides);
+        # if it still talks, that is its answer. The rules would have searched for «سلام».
+        retry = messages + [{"role": "assistant", "content": prose},
+                            {"role": "user", "content": "این جواب JSON نبود. فقط همان یک شیء JSON را بده؛ اگر پیام من گپ یا "
+                                                        "سؤال درباره‌ی خودت بود، intent را \"other\" بگذار و جوابت را در message بنویس."}]
+        try:
+            res = llm.complete("router", retry, session_id=session_id, max_tokens=900, json_mode=True)
+            return RouterOutput.model_validate(res.json())
+        except LLMError as e2:
+            reply = plain_text(getattr(e2, "text", "") or prose).strip()
+            note(e2, reply)
+            return RouterOutput(intent="other", message=reply[:500]) if reply else rule_route(text)
+        except Exception as e2:
+            note(e2)
+            return rule_route(text)
+    except Exception as e:   # schema mismatch: the app keeps working on rules
+        note(e)
         return rule_route(text)
 
 

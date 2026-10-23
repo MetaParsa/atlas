@@ -158,3 +158,30 @@ def test_seller_note_comes_from_the_offer_description():
     pid = store.get().execute("SELECT product_id FROM offers WHERE length(trim(description)) > 20 LIMIT 1").fetchone()[0]
     _, offers, _ = shops.load_offers(pid)
     assert any(o.seller_note for o in offers)
+
+
+def test_when_the_model_talks_instead_of_json_it_is_asked_once_then_its_words_are_the_reply():
+    from types import SimpleNamespace as NS
+    from core.llm import LLMError, LLMResult
+    from torob.router import understand
+
+    def talks(times):
+        calls = []
+        def complete(role, messages, **kw):
+            calls.append(messages)
+            if len(calls) <= times:
+                err = LLMError("bad json")
+                err.text = "سلام! من دستیار خرید حضوری ترب‌ام."
+                raise err
+            return LLMResult('{"intent": "other", "message": "سلام!"}', [], {}, "fake", "m", 0)
+        return NS(enabled=True, complete=complete), calls
+
+    llm, calls = talks(1)
+    out = understand(llm, SessionState(), "سلام", "s")
+    assert out.intent == "other" and out.message == "سلام!" and len(calls) == 2 and "JSON" in calls[1][-1]["content"]
+    llm, calls = talks(2)
+    out = understand(llm, SessionState(), "سلام", "s")
+    assert out.intent == "other" and out.message.startswith("سلام! من") and len(calls) == 2
+    def down(role, messages, **kw):
+        raise LLMError("timeout")
+    assert understand(NS(enabled=True, complete=down), SessionState(), "شارژر سامسونگ", "s").intent == "need"   # rules
