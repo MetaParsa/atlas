@@ -239,7 +239,7 @@ def _tile_range(z: int) -> tuple[int, int, int, int]:
 @lru_cache(maxsize=1)
 def _tile_http():
     import httpx
-    return httpx.Client(timeout=8, headers={"User-Agent": "dastyar-kharid-hozoori/1.0 (StarCoach hackathon demo)"})
+    return httpx.Client(timeout=8, headers={"User-Agent": "dastyar-kharid-hozoori/1.0 (hackathon demo)"})
 
 
 @app.get("/tiles/{style}/{z}/{x}/{y}.png")

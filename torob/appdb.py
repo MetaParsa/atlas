@@ -61,6 +61,8 @@ class AppDB:
                 "INSERT INTO sessions(id, state, created, updated) VALUES (?,?,?,?) "
                 "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated = excluded.updated",
                 (sid, state.model_dump_json(), now, now))
+        if now - self._purged > 3600:   # a long-running container still forgets old sessions (README: 7 days)
+            self.purge()
 
     def log_event(self, sid: str, event: str, data: dict) -> None:
         with self._lock:
@@ -121,6 +123,7 @@ class AppDB:
                               (key, json.dumps(value, ensure_ascii=False), time.time()))
 
     def purge(self, keep_days: int = KEEP_DAYS) -> None:
+        self._purged = time.time()
         cutoff = time.time() - keep_days * 86400
         with self._lock:
             self._con.execute("DELETE FROM events WHERE ts < ?", (cutoff,))

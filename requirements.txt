@@ -2,7 +2,7 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 httpx==0.28.1
-anthropic==2.1.0    # Claude (Haiku 5.5) through the official SDK
+anthropic==2.1.0    # Claude (Sonnet 5.5) through the official SDK
 pydantic>=2.9,<3
 tzdata>=2024.1
 duckdb>=1.1          # only for the boot-time DB build fallback (torob/boot.py)

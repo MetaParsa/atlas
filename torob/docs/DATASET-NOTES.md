@@ -1,6 +1,6 @@
 # the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ dataset — what's actually in it
 
-Profiled 2026-10-21 with DuckDB. Source: `the-event⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣-dataset-v16-cap300-csv.zip` (60.2 MB) from the the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ challenge page → unzipped to `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
+Profiled 2026-10-21 with DuckDB. Source: `the-event⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣-dataset-v16-cap300-csv.zip` (60.2 MB) from the marketplace's⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ challenge page → unzipped to `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/v16/` (285 MB). Export built **2026-10-14** (file dates); newest price change 2026-10-13.
 
 **Don't commit the CSVs to GitHub**: `products.csv` is 196 MB, over GitHub's 100 MB file limit. `the marketplace⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣/data/.gitignore` keeps them out. The app loads them at build/deploy time into its own database.
 
@@ -150,7 +150,7 @@ Real-named shops (Instagram/website) are mostly in شیخ هادی (43), فرد�
 5. **Hours:** missing `{}` → "ساعت کاری ثبت نشده"; ignore `00:00–00:00` shifts; Friday mostly closed.
 6. **Group offers per (shop, product)** and show a price range when there are variants.
 7. **Areas:** use `location_label` + coordinates for the area chip; default to Ferdowsi/Jomhouri; outside the dense areas, say so and offer the nearest dense area.
-8. **Load once** into SQLite (FTS5) or Postgres at deploy; the 285 MB of CSV becomes a single DB file on the the platform⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ disk.
+8. **Load once** into SQLite (FTS5) or Postgres at deploy; the 285 MB of CSV becomes a single DB file on the platform's⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ disk.
 
 ---
 

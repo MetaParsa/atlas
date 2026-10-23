@@ -1,4 +1,4 @@
-"""A shopper's photo → what product it shows, as a short Persian search query (Claude Haiku reads the image).
+"""A shopper's photo → what product it shows, as a short Persian search query (Claude reads the image).
 
 One small call per photo. The model only names what is visible (type, brand, model if legible on the product or
 box); when it can't tell, the answer is None and the chat asks for the name instead of guessing.

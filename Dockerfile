@@ -1,5 +1,5 @@
 # Torob in-store agent — Liara Docker platform.
-# Liara mirrors: Docker Hub and PyPI can be blocked from Iranian build servers (docs/liara-research.md #22, #23).
+# Liara mirrors: Docker Hub and PyPI can be blocked from Iranian build servers.
 ARG BASE=docker-mirror.liara.ir/library/python:3.12-slim
 FROM ${BASE}
 

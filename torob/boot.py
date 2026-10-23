@@ -37,7 +37,7 @@ def _build() -> None:
     work = Path(tempfile.mkdtemp(prefix="torob-ds-", dir=store.DB_PATH.parent))
     try:
         zpath = work / "dataset.zip"
-        with urllib.request.urlopen(url, timeout=600) as r, zpath.open("wb") as f:   # official StarCoach URL from env
+        with urllib.request.urlopen(url, timeout=600) as r, zpath.open("wb") as f:   # official dataset URL from env
             shutil.copyfileobj(r, f)
         status.update(state="unpacking")
         with zipfile.ZipFile(zpath) as z:
