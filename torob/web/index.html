@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#15202b" media="(prefers-color-scheme: dark)">
   <title>تربچه · دستیار خرید حضوری</title>
-  <link rel="icon" type="image/svg+xml" href="/static/torob-logo.svg">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=radish1">
   <link rel="preload" href="/static/fonts/Vazirmatn-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
   <meta name="map-js" content="/static/map.js">
@@ -66,6 +66,10 @@
     <div class="field">
       <span id="photo" class="photo-chip" hidden><img alt="عکس انتخاب‌شده"><button type="button" aria-label="حذف عکس">×</button></span>
       <textarea id="text" name="text" rows="1" maxlength="1000" placeholder="پیامت رو بنویس" aria-label="پیام" enterkeyhint="send"></textarea>
+      <button id="mic" class="mic" type="button" aria-label="گفتن به‌جای نوشتن"
+        title="بگو؛ حرفت در کادر نوشته می‌شه و خودت می‌فرستی. صدا برای تبدیل به متن به سرویس گفتار مرورگرت (گوگل یا مایکروسافت) می‌ره.">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+      </button>
       <button id="send" type="submit" aria-label="ارسال">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
       </button>

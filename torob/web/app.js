@@ -875,6 +875,43 @@ $("#text").addEventListener("keydown", (e) => {
   }
 });
 $("#text").addEventListener("input", (e) => { fitText(); syncSend(); if (!busy) Radish.set(e.target.value.trim() ? "listen" : "idle"); });
+// voice: speak the request; it is drafted into the box (never sent by itself). The browser's own speech service (free;
+// Edge and Chrome send the audio to Microsoft or Google). Asking for the microphone first makes every Chromium browser
+// show its permission prompt, including forks without a speech service (Helium, Brave), which then get a clear message.
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SPEECH_ERR = {
+  network: "سرویس گفتار این مرورگر در دسترس نیست (مثلاً Helium یا Brave)؛ با Edge یا Chrome امتحان کن یا بنویس.",
+  "not-allowed": "اجازه‌ی میکروفون داده نشد؛ از آیکون قفل کنار آدرس، میکروفون رو روی «اجازه» بذار.",
+  "service-not-allowed": "این مرورگر اجازه‌ی تبدیل گفتار به متن رو نمی‌ده؛ با Edge یا Chrome امتحان کن.",
+  "audio-capture": "میکروفونی پیدا نشد.", "no-speech": "صدایی نشنیدم؛ دوباره امتحان کن.",
+  "language-not-supported": "این مرورگر گفتار فارسی رو نمی‌شناسه؛ با Edge یا Chrome امتحان کن.",
+};
+let rec = null;
+function micIdle() { rec = null; $("#mic").classList.remove("on"); $("#mic").setAttribute("aria-pressed", "false"); }
+$("#mic").addEventListener("click", async () => {
+  if (rec) { rec.stop(); return; }
+  if (!Speech) return showError("این مرورگر تبدیل گفتار به متن نداره (Edge و Chrome دارن)؛ بنویس.");
+  if (!navigator.mediaDevices?.getUserMedia) return showError("میکروفون فقط روی https در دسترسه.");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // the permission prompt
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    return showError(e.name === "NotFoundError" ? SPEECH_ERR["audio-capture"] : SPEECH_ERR["not-allowed"]);
+  }
+  const r = rec = new Speech();
+  r.lang = "fa-IR"; r.interimResults = true; r.continuous = false;
+  const t = $("#text"), before = t.value.trim();
+  r.onresult = (e) => {
+    const heard = [...e.results].map((x) => x[0].transcript).join(" ").trim();
+    t.value = before ? `${before} ${heard}` : heard;
+    fitText(); syncSend();
+  };
+  r.onerror = (e) => { if (e.error !== "aborted") showError(SPEECH_ERR[e.error] || `تبدیل گفتار انجام نشد (${e.error}).`); };
+  r.onend = () => { micIdle(); if (!busy) Radish.set(t.value.trim() ? "listen" : "idle"); t.focus(); };
+  try { r.start(); } catch (_) { micIdle(); return; }
+  $("#mic").classList.add("on"); $("#mic").setAttribute("aria-pressed", "true");
+  if (!busy) Radish.set("listen");
+});
 $("#attach").addEventListener("click", () => $("#file").click());
 $("#file").addEventListener("change", (e) => { attachPhoto(e.target.files[0]); e.target.value = ""; });
 $("#photo button").addEventListener("click", () => { photo = null; renderPhoto(); });
