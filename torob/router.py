@@ -127,6 +127,61 @@ def rule_route(text: str, allow_ask: bool = True) -> RouterOutput:
 
 ROUTER_FALLBACKS: deque = deque(maxlen=20)   # why the model's reading wasn't used (shown on /admin)
 
+# Structured outputs: the router's reply always matches this, so small talk can't come back as prose. Every field is
+# required and nullable (the safe subset); conditions are a list of explicit changes, so «unchanged» and «set to
+# don't-care (null)» never get confused.
+_S, _N = {"type": "string"}, {"type": "null"}
+_ARR = {"type": "array", "items": _S}
+_null = lambda s: {"anyOf": [s, _N]}
+_NEED_FIELDS = {"product_type": _S, "keywords": _ARR, "category_hints": _ARR, "budget_min": _null({"type": "integer"}),
+                "budget_max": _null({"type": "integer"}), "use_case": _null(_S), "must_have": _ARR, "brand_pref": _ARR,
+                "named_product": _null(_S), "missing_info": _ARR}
+ROUTER_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["intent", "need", "conditions_patch", "target", "message", "question"],
+    "properties": {
+        "intent": {"type": "string", "enum": ["need", "named_product", "refine", "call_shop", "ask_results", "hub", "other"]},
+        "need": _null({"type": "object", "additionalProperties": False, "required": list(_NEED_FIELDS), "properties": _NEED_FIELDS}),
+        "conditions_patch": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False, "required": ["key", "value"],
+            "properties": {"key": {"type": "string", "enum": ["radius_km", "budget_min", "budget_max", "payment",
+                                                             "fast_delivery", "open", "arrive_at"]},
+                           "value": _null(_S)}}},
+        "target": _S, "message": _S,
+        "question": _null({"type": "object", "additionalProperties": False, "required": ["text", "options", "wait"],
+                           "properties": {"text": _S, "options": _ARR, "wait": {"type": "boolean"}}}),
+    },
+}
+
+
+def _patch_from_pairs(v) -> dict:
+    """[{"key": "budget_max", "value": "3000000"}, …] → {"budget_max": 3000000}; a dict (rules, older replies) passes."""
+    if isinstance(v, dict) or not v:
+        return v or {}
+    out = {}
+    for p in v:
+        k, val = (p or {}).get("key"), (p or {}).get("value")
+        try:
+            if val is None or str(val).strip().lower() in ("", "null", "none"):
+                out[k] = None
+            elif k == "radius_km":
+                out[k] = float(to_latin_digits(str(val)))
+            elif k in ("budget_min", "budget_max"):
+                out[k] = int(float(to_latin_digits(str(val))))
+            elif k == "fast_delivery":
+                out[k] = str(val).strip().lower() in ("true", "1", "yes", "بله")
+            else:
+                out[k] = val
+        except ValueError:
+            continue   # an unreadable value changes nothing (apply_patch validates the rest)
+    return out
+
+
+def _router_output(data: dict) -> RouterOutput:
+    if isinstance(data, dict) and "conditions_patch" in data:
+        data = {**data, "conditions_patch": _patch_from_pairs(data["conditions_patch"])}
+    return RouterOutput.model_validate(data)
+
 
 def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) -> RouterOutput:
     """History (previous turns only) + this message → RouterOutput. Any failure → rule_route (and is recorded)."""
@@ -137,30 +192,23 @@ def understand(llm: LLMClient, state: SessionState, text: str, session_id: str) 
             ROUTER_FALLBACKS.append({"at": time.strftime("%H:%M:%S"), "error": f"{type(e).__name__}: {str(e)[:200]}",
                                      "reply": reply[:300]})
 
-    try:
-        res = llm.complete("router", messages, session_id=session_id, max_tokens=900, json_mode=True)   # Persian JSON is token-heavy
-        return RouterOutput.model_validate(res.json())
+    try:   # structured outputs: always the JSON, never prose (Persian JSON is token-heavy, hence 900)
+        res = llm.complete("router", messages, session_id=session_id, max_tokens=900, schema=ROUTER_SCHEMA)
+        return _router_output(res.json())
     except LLMError as e:
-        prose = getattr(e, "text", "")
-        if not prose:   # LLM error or budget spent: the app keeps working on rules
-            note(e)
-            return rule_route(text)
-        # To «سلام» or «اسمت چیه؟» Haiku sometimes just talks back. Ask once more for the JSON (the model decides);
-        # if it still talks, that is its answer. The rules would have searched for «سلام».
-        retry = messages + [{"role": "assistant", "content": prose},
-                            {"role": "user", "content": "این جواب JSON نبود. فقط همان یک شیء JSON را بده؛ اگر پیام من گپ یا "
-                                                        "سؤال درباره‌ی خودت بود، intent را \"other\" بگذار و جوابت را در message بنویس."}]
-        try:
-            res = llm.complete("router", retry, session_id=session_id, max_tokens=900, json_mode=True)
-            return RouterOutput.model_validate(res.json())
-        except LLMError as e2:
-            reply = plain_text(getattr(e2, "text", "") or prose).strip()
-            note(e2, reply)
-            return RouterOutput(intent="other", message=reply[:500]) if reply else rule_route(text)
-        except Exception as e2:
-            note(e2)
-            return rule_route(text)
-    except Exception as e:   # schema mismatch: the app keeps working on rules
+        note(e)   # e.g. the schema itself was refused: one plain JSON-mode try, so a schema problem can't break the app
+    except Exception as e:
+        note(e)
+        return rule_route(text)
+    try:
+        res = llm.complete("router", messages, session_id=session_id, max_tokens=900, json_mode=True)
+        return _router_output(res.json())
+    except LLMError as e:
+        prose = plain_text(getattr(e, "text", "")).strip()
+        note(e, prose)
+        # the model talked instead of answering in JSON: that is its reply to small talk («سلام», «اسمت چیه؟»)
+        return RouterOutput(intent="other", message=prose[:500]) if prose else rule_route(text)
+    except Exception as e:
         note(e)
         return rule_route(text)
 

@@ -160,28 +160,33 @@ def test_seller_note_comes_from_the_offer_description():
     assert any(o.seller_note for o in offers)
 
 
-def test_when_the_model_talks_instead_of_json_it_is_asked_once_then_its_words_are_the_reply():
+def test_router_replies_through_a_schema_and_never_leaks_a_nudge():
     from types import SimpleNamespace as NS
     from core.llm import LLMError, LLMResult
-    from torob.router import understand
+    from torob.router import ROUTER_SCHEMA, understand
 
-    def talks(times):
+    def llm(script):
         calls = []
         def complete(role, messages, **kw):
-            calls.append(messages)
-            if len(calls) <= times:
-                err = LLMError("bad json")
-                err.text = "سلام! من دستیار خرید حضوری ترب‌ام."
-                raise err
-            return LLMResult('{"intent": "other", "message": "سلام!"}', [], {}, "fake", "m", 0)
+            calls.append((messages, kw))
+            return script(len(calls), kw)
         return NS(enabled=True, complete=complete), calls
 
-    llm, calls = talks(1)
-    out = understand(llm, SessionState(), "سلام", "s")
-    assert out.intent == "other" and out.message == "سلام!" and len(calls) == 2 and "JSON" in calls[1][-1]["content"]
-    llm, calls = talks(2)
-    out = understand(llm, SessionState(), "سلام", "s")
-    assert out.intent == "other" and out.message.startswith("سلام! من") and len(calls) == 2
-    def down(role, messages, **kw):
+    ok = '{"intent": "refine", "need": null, "target": "", "message": "", "question": null, '          '"conditions_patch": [{"key": "budget_max", "value": "3000000"}, {"key": "radius_km", "value": null}]}'
+    m, calls = llm(lambda n, kw: LLMResult(ok, [], {}, "fake", "m", 0))
+    out = understand(m, SessionState(), "تا ۳ میلیون، کل تهران", "s")
+    assert out.intent == "refine" and out.conditions_patch == {"budget_max": 3_000_000, "radius_km": None}
+    assert calls[0][1]["schema"] is ROUTER_SCHEMA
+
+    def schema_refused_then_prose(n, kw):
+        err = LLMError("refused" if n == 1 else "bad json")
+        err.text = "" if n == 1 else "سلام! من تربچه‌ام."
+        raise err
+    m, calls = llm(schema_refused_then_prose)
+    out = understand(m, SessionState(), "سلام", "s")
+    assert out.intent == "other" and out.message == "سلام! من تربچه‌ام." and len(calls) == 2
+    assert all("JSON" not in str(msgs[-1]["content"]) for msgs, _ in calls)   # no nudge is ever sent (or shown)
+
+    def down(n, kw):
         raise LLMError("timeout")
-    assert understand(NS(enabled=True, complete=down), SessionState(), "شارژر سامسونگ", "s").intent == "need"   # rules
+    assert understand(llm(down)[0], SessionState(), "شارژر سامسونگ", "s").intent == "need"   # rules
