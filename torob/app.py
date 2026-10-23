@@ -177,6 +177,20 @@ def is_https(request: Request) -> bool:
 
 # --- routes ------------------------------------------------------------------------------------------------------
 
+MEDIA = Path(os.environ.get("TOROB_MEDIA", "/data/media"))   # demo videos for the submission, on the server's disk
+_MEDIA_NAME = __import__("re").compile(r"[A-Za-z0-9_.-]{1,80}\.(mp4|webm)")
+
+
+@app.get("/media/{name}")
+def media(name: str) -> FileResponse:
+    """A video uploaded to the server's media folder, with range requests (seeking). Plain names only."""
+    path = MEDIA / name
+    if not _MEDIA_NAME.fullmatch(name) or not path.is_file():
+        raise HTTPException(404, "پیدا نشد")
+    return FileResponse(path, media_type="video/mp4" if name.endswith(".mp4") else "video/webm",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/health")
 def health() -> dict:
     try:
