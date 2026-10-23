@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, ValidationError
 from core.agent_loop import Emitter, plain_text
 from core.llm import LLMClient, LLMError
 from core.text import format_million, format_price_short, format_toman, normalize_fa, to_fa_digits, to_latin_digits
-from torob import search
+from torob import neshan, search
 from torob import store
 from torob import clock
 from torob.agents import advisor
@@ -440,8 +440,11 @@ class SetLocationArgs(DirectTool):
 
 @direct("set_location", SetLocationArgs)
 def _chip_set_location(state: SessionState, em: Emitter, args: SetLocationArgs) -> Iterator[str]:
+    label = args.label
+    if args.source == "gps" and (name := neshan.place_name(args.lat, args.lng)):   # «مکان من · کاووسیه، میدان ونک»:
+        label = f"مکان من · {name}"[:40]                                            # the shopper sees if the fix is right
     state.conditions = state.conditions.model_copy(update={"center": Location(
-        lat=args.lat, lng=args.lng, label=args.label, source=args.source)})
+        lat=args.lat, lng=args.lng, label=label, source=args.source)})
     yield em.emit("conditions", conditions_event(state))
     yield from rerun_latest(state, em)
 

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 
 from core.text import TEHRAN, format_price_short, format_toman, price_age_label, to_fa_digits
-from torob import clock, store
+from torob import clock, neshan, store
 from torob.logic import hours as H
 from torob.logic.geo import bbox, estimate_minutes, haversine_m
 from torob.models import Chip, Conditions
@@ -41,6 +41,7 @@ class ShopOffer:
     meters: float = 0
     minutes: int = 0
     mode: str = "walk"
+    traffic: bool = False           # minutes are Neshan's real driving time with traffic, not our estimate
     arrival: datetime | None = None
     open_state: str = "unknown"     # yes | tight | no | unknown (at arrival)
     closes: datetime | None = None
@@ -111,11 +112,14 @@ def load_offers(product_id: str) -> tuple[dict, list[ShopOffer], set[str]]:
     return dict(prod), offers, suspicious_only
 
 
-def _plan_visit(o: ShopOffer, cond: Conditions, now: datetime) -> None:
+def _plan_visit(o: ShopOffer, cond: Conditions, now: datetime, drive: int | None = None) -> None:
+    """`drive`: Neshan's driving minutes with traffic for a shop reached by car, when known."""
     s = o.shop
     o.meters = haversine_m(cond.center.lat, cond.center.lng, s["lat"], s["lon"])
     o.mode = "walk" if o.meters <= WALK_MAX_M and cond.mode == "walk" else "car"
     o.minutes = estimate_minutes(o.meters, o.mode)
+    if drive and o.mode == "car":
+        o.minutes, o.traffic = drive, True
     if cond.arrive_at:   # the user said when they'll be there; a time already past today means tomorrow
         arrive = H.as_tehran(cond.arrive_at)
         o.arrival = arrive if arrive > now else arrive + timedelta(days=1)
@@ -303,6 +307,12 @@ def find_shops(product_id: str, cond: Conditions, keep: frozenset[str] = frozens
     product, offers, suspicious_only = load_offers(product_id)
     for o in offers:
         _plan_visit(o, cond, now)
+    by_car = sorted((o for o in offers if o.mode == "car"), key=lambda o: o.meters)[:20]
+    if by_car and neshan.enabled():   # the drive with today's traffic decides «open when you get there» too
+        for o, m in zip(by_car, neshan.drive_minutes((cond.center.lat, cond.center.lng),
+                                                     [(o.shop["lat"], o.shop["lon"]) for o in by_car])):
+            if m:
+                _plan_visit(o, cond, now, drive=m)
     _same_building(offers)
     notes: list[str] = []
     relaxed = None
@@ -368,7 +378,8 @@ def _day_label(dt: datetime, now: datetime) -> str:
 
 
 def visit_line(o: ShopOffer, now: datetime) -> str:
-    move = f"{to_fa_digits(o.minutes)} دقیقه {'پیاده' if o.mode == 'walk' else 'با ماشین'} (تخمینی)"
+    move = (f"{to_fa_digits(o.minutes)} دقیقه با ماشین (با ترافیک الان، نشان)" if o.traffic
+            else f"{to_fa_digits(o.minutes)} دقیقه {'پیاده' if o.mode == 'walk' else 'با ماشین'} (تخمینی)")
     if o.open_state in ("yes", "tight"):
         state = f"باز تا {to_fa_digits(o.closes.strftime('%H:%M'))}" + ("، وقت کمه" if o.open_state == "tight" else "")
     elif o.open_state == "no":
@@ -415,7 +426,7 @@ def card(o: ShopOffer, product: dict, cond: Conditions, now: datetime) -> dict:
         "where": where_line(s), "address": s["address"], "area": s["area"],
         "price": price_line(o, now), "stock_label": "موجودی: تأیید نشده", "stock": "listed",
         "visit": {"text": visit_line(o, now), "minutes": o.minutes, "meters": round(o.meters), "mode": o.mode,
-                  "estimate": True, "open_at_arrival": o.open_state,
+                  "estimate": not o.traffic, "open_at_arrival": o.open_state,
                   "closes": o.closes.strftime("%H:%M") if o.closes else None},
         "details": {"payments": payment_labels(o) or ["شرایط قسطی ثبت نشده"],
                     "warranty": o.warranty or "گارانتی ثبت نشده",

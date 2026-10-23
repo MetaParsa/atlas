@@ -53,22 +53,18 @@ def test_nothing_under_budget_question_is_marked_as_a_fact():
     assert res.question and res.question.get("fact") is True and "بودجه" in res.question["text"]
 
 
-def test_a_name_found_only_in_addresses_says_where_it_was_placed():
-    """«تو پردیسم»: Pardis the city has no shops in the data; «پردیس» in shop addresses must not pass for it silently."""
+def test_a_place_neshan_puts_outside_tehran_is_not_passed_off_as_a_tehran_shop_address(monkeypatch):
+    """«تو پردیسم»: Pardis the city has no shops in the data; a shop address or building named «پردیس» must not
+    pass for it. Neshan says where the name really is; outside Tehran → not placed (the router says so)."""
     import pytest
-    from torob import store
+    from torob import neshan, store
     if not store.DB_PATH.exists():
         pytest.skip("no dataset")
-    from torob.agents.places import locate
-    from torob.models import SessionState
-    from torob.router import apply_patch
-    assert locate("فردوسی")[2] is None              # a real neighbourhood
-    spot = locate("پردیس")
-    if spot is None:
-        pytest.skip("no address mentions it")
-    st = SessionState()
-    changed = apply_patch(st, {"area": "پردیس"})
-    assert "center" in changed and any(c.startswith("center_by_address:") for c in changed)
+    from torob.agents import places
+    monkeypatch.setattr(neshan, "geocode", lambda name: (35.745, 51.79))   # Pardis city, east of Tehran
+    assert places.locate("پردیس") is None
+    monkeypatch.setattr(neshan, "geocode", lambda name: None)              # Neshan off: the shop data still places it
+    assert places.locate("فردوسی")[2] is None
 
 
 def test_all_closed_late_at_night_offers_the_next_morning():
@@ -266,3 +262,30 @@ def test_fit_for_purpose_decides_which_models_compete():
         return relevance.Judgement(kept, fit=fit)
     res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
     assert res.picks and {p.c.product_id for p in res.picks} <= seen["gaming"]
+
+
+def test_neshan_is_used_when_it_answers_and_ignored_when_it_fails(monkeypatch):
+    import pytest
+    from torob import neshan, store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.agents import shops
+    from torob.models import Chip, Conditions, Location, SessionState
+    from torob.router import run_turn
+    monkeypatch.setattr(neshan, "place_name", lambda lat, lng: "کاووسیه، میدان ونک")
+    st, em = SessionState(), Emitter("s")
+    list(run_turn(_rule_llm(), st, em, chip=Chip(label="مکان من", kind="direct_call", tool="set_location",
+                                                 args={"lat": 35.7575, "lng": 51.4097, "label": "مکان من", "source": "gps"})))
+    assert st.conditions.center.label == "مکان من · کاووسیه، میدان ونک"
+    # driving times: Neshan's answer replaces the estimate for shops reached by car; a failure keeps the estimate
+    pid = store.get().execute("SELECT product_id FROM offers GROUP BY product_id ORDER BY count(*) DESC LIMIT 1").fetchone()[0]
+    cond = Conditions(center=Location(lat=35.7575, lng=51.4097, label="ونک", source="area"), radius_km=None)
+    monkeypatch.setattr(neshan, "enabled", lambda: True)
+    monkeypatch.setattr(neshan, "drive_minutes", lambda o, ds: [17] * len(ds))
+    res = shops.find_shops(pid, cond)
+    car = [o for o in res.items + res.more if o.mode == "car"]
+    assert car and all(o.traffic and o.minutes == 17 for o in car[:1]) and "نشان" in shops.visit_line(car[0], __import__("torob").clock.now())
+    monkeypatch.setattr(neshan, "drive_minutes", lambda o, ds: [None] * len(ds))
+    res = shops.find_shops(pid, cond)
+    assert not any(o.traffic for o in res.items + res.more)

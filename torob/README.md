@@ -215,6 +215,7 @@ uv run pytest -q          # تست‌ها به data/torob.db نیاز دارند
 | `DEMO_NOW` · `SIM_OVERRIDES` · `SIM_SEED_DATE` | — | دموی تکرارپذیر |
 | `CALL_LINE_DELAY` | `0.7` | مکث بین جمله‌های تماس |
 | `TOROB_LIVE` / `TOROB_LIVE_DAILY_CAP` | `1` / `400` | قیمت زنده‌ی امروز از بازارگاه⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁤⁣ کنار قیمت ثبت‌شده؛ `0` = خاموش |
+| `NESHAN_API_KEY` / `NESHAN_DAILY_CAP` | — / `3000` | نشان: جای محله و نشانه‌هایی که کاربر تایپ می‌کند، اسم خوانای مکان GPS، و زمان واقعی رانندگی با ترافیک برای فروشگاه‌های دور؛ بدونش تخمین خود برنامه |
 | `TRUST_PROXY` | `0` | پشت پراکسی (Caddy): آخرین IP در `X-Forwarded-For` |
 
 بدون کلید Anthropic، `LLM_PRIMARY_*` و `LLM_FALLBACK_*` یک درگاه سازگار با OpenAI را می‌پذیرند.

@@ -12,8 +12,9 @@ from datetime import datetime
 from functools import lru_cache
 
 from core.text import normalize_fa, format_price_short, format_toman, to_fa_digits
-from torob import clock, store
+from torob import clock, neshan, store
 from torob.agents import shops as shops_agent
+from torob.logic.geo import haversine_m
 from torob.models import Conditions
 
 HUB_MIN_SHOPS = 3        # a building with fewer sellers of the category isn't a hub
@@ -102,28 +103,45 @@ def _gazetteer(name: str) -> tuple[float, float] | None:
 
 
 def locate(name: str) -> tuple[float, float, str | None] | None:
-    """A neighbourhood («تجریش»), street («ولیعصر») or passage the shopper names, placed by the dataset's own shops:
-    the median position of shops in that area, or whose address or building names it. None if fewer than 3.
-    The third value is None for a neighbourhood match; for an address match it is the neighbourhood those shops are in
-    («پردیس» the city is not in the data, but «سینما پردیس» in an address is), so the shopper can be told."""
+    """A neighbourhood («تجریش»), street («ولیعصر»), passage or landmark the shopper names → (lat, lng, note).
+    In order: the dataset's own neighbourhood, passage or street (shops placed there), Neshan's geocoder (landmarks and
+    neighbourhoods anywhere in Tehran), a small built-in list, and last a name only seen in a few shop addresses. The
+    third value is None when the place itself was found; for that last case it is the neighbourhood those shops are
+    in («پردیس» the city is outside Tehran, but «سینما پردیس» is in some addresses), so the shopper can be told."""
     name = " ".join(str(name).split())[:40]
     if len(name) < 2:
         return None
     con = store.get()
+    median = lambda rs: (sorted(r["lat"] for r in rs)[len(rs) // 2], sorted(r["lon"] for r in rs)[len(rs) // 2])
     rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND area = ?", (name,)).fetchall()
-    where = None
-    if len(rows) < 3 and (spot := _gazetteer(name)):   # a known Tehran place the shop data can't place by itself
+    if len(rows) >= 3:
+        return (*median(rows), None)
+    spot = neshan.geocode(name)
+    if spot and not neshan.in_tehran(*spot):   # a real place outside the city (Pardis, Karaj): not a passage name
+        return None
+    rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND building LIKE ? LIMIT 500",
+                       (f"%{name}%",)).fetchall()
+    if len(rows) >= 3:   # a passage or building in the data: exactly where its shops are
+        return (*median(rows), None)
+    rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND address LIKE ? LIMIT 500",
+                       (f"%{name}%",)).fetchall()
+    if len(rows) >= 10 and _spread_m(rows) < 1500:   # a street the data knows well («جمهوری»)
+        return (*median(rows), None)
+    if spot:
+        return spot[0], spot[1], None
+    if spot := _gazetteer(name):
         return spot[0], spot[1], None
     if len(rows) < 3:
-        like = f"%{name}%"
-        rows = con.execute("SELECT lat, lon, area FROM shops WHERE lat IS NOT NULL AND (address LIKE ? OR building LIKE ?) "
-                           "LIMIT 500", (like, like)).fetchall()
-        areas = Counter(r["area"] for r in rows if r["area"])
-        where = areas.most_common(1)[0][0] if areas else "مرکز تهران"
-    if len(rows) < 3:
         return None
+    areas = Counter(r["area"] for r in rows if r["area"])
+    return (*median(rows), areas.most_common(1)[0][0] if areas else "مرکز تهران")
+
+
+def _spread_m(rows) -> float:
+    """Inter-quartile spread of shop positions, in metres: small = one street or passage, large = a common word."""
     lats, lons = sorted(r["lat"] for r in rows), sorted(r["lon"] for r in rows)
-    return lats[len(lats) // 2], lons[len(lons) // 2], where
+    q = lambda xs, f: xs[int(f * (len(xs) - 1))]
+    return haversine_m(q(lats, .25), q(lons, .25), q(lats, .75), q(lons, .75))
 
 
 def hub_sentence(subject: str, h: dict) -> str:
