@@ -142,3 +142,15 @@ def test_budget_buttons_follow_the_matching_products_not_luxury_outliers():
     assert budget_tiers(prices, [1_500_000, 3_000_000, 5_000_000]) == [1_500_000, 3_000_000, 5_000_000]   # the model, inside real prices
     assert max(budget_tiers(prices)) <= 4_000_000                                                    # no model: lower spread
     assert budget_tiers(prices, [500_000_000]) == budget_tiers(prices)                               # out of range: ignored
+
+
+@pytest.mark.skipif(not __import__("torob").store.DB_PATH.exists(), reason="run torob.etl.build_db first")
+def test_likely_copies_step_aside_when_a_real_one_is_found():
+    from torob.agents import advisor, relevance
+    from torob.models import Conditions, Need
+    need = Need(product_type="هندزفری بلوتوثی", keywords=["هندزفری بلوتوثی"])
+    def judge(cands):
+        return relevance.Judgement(cands[:6], copies={c.product_id for c in cands[1:6]})   # one real, five copies
+    res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
+    assert res.picks and all(not p.copy_suspect for p in res.picks)
+    assert any("کپی" in n for n in res.notes)
