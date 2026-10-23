@@ -26,6 +26,8 @@ prices (late 2026, after years of inflation), so judge prices against the other 
 For EACH product decide whether a sensible salesperson would show it for this request:
 - no: a different kind of product, or an accessory / spare part / refill / case / charger / cable (unless the shopper
   asked for that kind of item);
+- no: it is not an identifiable product a shop sells as one item: a vague bundle or "collection of accessories", a
+  generic title with no brand, model or concrete product type, a service, course, gift card or promo listing;
 - no: it clearly misses an explicit requirement: a named brand or model or generation, wireless vs wired, a size or
   capacity, or a stated form ("small, for travel" rules out large home or party speakers);
 - yes otherwise. Do not filter on the budget (the app does that with nearby prices), but do use price as evidence
