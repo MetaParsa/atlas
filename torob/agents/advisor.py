@@ -265,7 +265,7 @@ def _affordable_first(reps: list[search.Candidate], budget: int | None, cheap: b
 
 def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
     """`judge(candidates) -> kept | None`: the model's relevance check (agents/relevance.py), when there is a model."""
-    cands, cats = search.candidates(need, wide=judge is not None)   # a judge sees a wider net (the model's categories too)
+    cands, cats = search.candidates(need, wide=judge is not None, budget=cond.budget_max)   # a judge sees a wider net (the model's categories too)
     notes: list[str] = []
     if not cands:
         return AdvisorResult([], cats, ["توی داده‌ی ترب چیزی با این مشخصات پیدا نکردم."], [], None, 0, False)

@@ -2,7 +2,7 @@
  "summary": {
   "run": "r1",
   "n": 142,
-  "pass_rate": 0.81,
+  "pass_rate": 0.838,
   "groups": {
    "clear": {
     "n": 15,
@@ -21,13 +21,13 @@
    },
    "copy": {
     "n": 10,
-    "pass": 9,
-    "check_score": 0.967
+    "pass": 10,
+    "check_score": 1.0
    },
    "location": {
     "n": 15,
-    "pass": 10,
-    "check_score": 0.883
+    "pass": 13,
+    "check_score": 0.944
    },
    "followup": {
     "n": 15,
@@ -730,15 +730,13 @@
   {
    "id": "copy-09",
    "group": "copy",
-   "pass": false,
-   "check_score": 0.667,
+   "pass": true,
+   "check_score": 1.0,
    "turns": [
     {
      "turn": 1,
-     "fails": [
-      "missing products"
-     ],
-     "checks": 3
+     "fails": [],
+     "checks": 2
     }
    ]
   },
@@ -799,15 +797,13 @@
   {
    "id": "loc-03",
    "group": "location",
-   "pass": false,
-   "check_score": 0.667,
+   "pass": true,
+   "check_score": 1.0,
    "turns": [
     {
      "turn": 1,
-     "fails": [
-      "missing products"
-     ],
-     "checks": 3
+     "fails": [],
+     "checks": 2
     }
    ]
   },
@@ -980,15 +976,13 @@
   {
    "id": "loc-13",
    "group": "location",
-   "pass": false,
-   "check_score": 0.75,
+   "pass": true,
+   "check_score": 1.0,
    "turns": [
     {
      "turn": 1,
-     "fails": [
-      "missing products"
-     ],
-     "checks": 2
+     "fails": [],
+     "checks": 1
     },
     {
      "turn": 2,
@@ -1022,15 +1016,13 @@
   {
    "id": "loc-15",
    "group": "location",
-   "pass": false,
-   "check_score": 0.667,
+   "pass": true,
+   "check_score": 1.0,
    "turns": [
     {
      "turn": 1,
-     "fails": [
-      "missing products"
-     ],
-     "checks": 3
+     "fails": [],
+     "checks": 2
     }
    ]
   },

@@ -98,3 +98,18 @@ def test_all_closed_late_at_night_offers_the_next_morning():
             assert any(e == "question" and "۱۰ صبح" in d["text"] for e, d in em.events)
     finally:
         clock.set_now(None)
+
+
+def test_budget_browse_finds_products_whose_titles_dont_share_the_words():
+    """«هندزفری بلوتوث تا ۲ میلیون»: «هدفون بی سیم گرین لاین مدل Cairo» (≈۲ میلیون) never matched the text."""
+    import pytest
+    from torob import search, store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from torob.router import rule_route
+    need = rule_route("هندزفری بلوتوث").need
+    plain, _ = search.candidates(need, wide=True)
+    browsed, _ = search.candidates(need, wide=True, budget=2_000_000)
+    added = {c.product_id for c in browsed} - {c.product_id for c in plain}
+    assert added and all(c.price_median <= 2_200_000 for c in browsed if c.product_id in added)
+    assert [c.product_id for c in browsed][:len(plain)] == [c.product_id for c in plain]   # text matches still lead

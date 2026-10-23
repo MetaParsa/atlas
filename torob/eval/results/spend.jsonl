@@ -4,3 +4,5 @@
 {"run": "sample", "kind": "judge", "in": 21857, "out": 2293, "usd": 0.0666, "at": "16:00"}
 {"run": "r1", "kind": "app", "in": 466059, "out": 130017, "calls": 335, "cache_read": 957720, "cache_write": 5205, "usd": 2.4368, "at": "16:24"}
 {"run": "r1", "kind": "judge", "in": 297227, "out": 35283, "usd": 0.9473, "at": "16:34"}
+{"run": "r2", "kind": "app", "in": 518351, "out": 141497, "calls": 355, "cache_read": 1020396, "cache_write": 5486, "usd": 2.6695, "at": "17:06"}
+{"run": "r2", "kind": "judge", "in": 304896, "out": 36031, "usd": 0.9701, "at": "17:15"}

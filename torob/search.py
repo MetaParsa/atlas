@@ -167,7 +167,11 @@ def brands_in(text: str, known: set[str]) -> set[str]:
     return found
 
 
-def candidates(need: Need, limit_per_query: int = 60, wide: bool = False) -> tuple[list[Candidate], list[str]]:
+BUDGET_BROWSE = 30   # products per category added by price when a budget is set (the judge still filters them)
+
+
+def candidates(need: Need, limit_per_query: int = 60, wide: bool = False,
+               budget: int | None = None) -> tuple[list[Candidate], list[str]]:
     """Ranked candidate products (sane price only, no redacted titles) and the categories used.
     `wide` (a model will judge every candidate): also search the model's own category hints. Text hits alone can
     land in the wrong place («کفش دویدن» → women's college shoes) and the judge can't keep what was never fetched."""
@@ -193,6 +197,16 @@ def candidates(need: Need, limit_per_query: int = 60, wide: bool = False) -> tup
         for c in fetch:
             for i, r in enumerate(store.search_products(con, q, limit=limit_per_query, category=c)):
                 fused[r["product_id"]] = fused.get(r["product_id"], 0.0) + 1 / (10 + i)
+    if wide and budget and cats:   # titles don't share the shopper's words («هدفون بی سیم» for «هندزفری بلوتوث»):
+        # the best-selling products of the chosen categories within the budget join after the text matches, and the
+        # relevance judge decides which of them are the thing asked for
+        tail = min(fused.values(), default=1.0) / 2
+        for c in cats[:2]:
+            rows = con.execute("SELECT product_id FROM products WHERE category = ? AND redacted = 0 AND price_median "
+                               "BETWEEN ? AND ? ORDER BY sellers_total DESC LIMIT ?",
+                               (c, budget // 10, int(budget * 1.1), BUDGET_BROWSE)).fetchall()
+            for i, r in enumerate(rows):
+                fused.setdefault(r["product_id"], tail / (1 + i / 100))
     if not fused:
         return [], cats
     order = {pid: n for n, pid in enumerate(sorted(fused, key=lambda pid: -fused[pid]))}

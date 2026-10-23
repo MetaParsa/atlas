@@ -1,0 +1,2499 @@
+{
+ "summary": {
+  "run": "r2",
+  "n": 142,
+  "pass_rate": 0.894,
+  "groups": {
+   "clear": {
+    "n": 15,
+    "pass": 13,
+    "check_score": 0.981
+   },
+   "messy": {
+    "n": 15,
+    "pass": 12,
+    "check_score": 0.951
+   },
+   "budget": {
+    "n": 10,
+    "pass": 6,
+    "check_score": 0.911
+   },
+   "copy": {
+    "n": 10,
+    "pass": 10,
+    "check_score": 1.0
+   },
+   "location": {
+    "n": 15,
+    "pass": 15,
+    "check_score": 1.0
+   },
+   "followup": {
+    "n": 15,
+    "pass": 15,
+    "check_score": 1.0
+   },
+   "hub": {
+    "n": 8,
+    "pass": 8,
+    "check_score": 1.0
+   },
+   "call": {
+    "n": 8,
+    "pass": 8,
+    "check_score": 1.0
+   },
+   "offtopic": {
+    "n": 12,
+    "pass": 12,
+    "check_score": 1.0
+   },
+   "injection": {
+    "n": 12,
+    "pass": 12,
+    "check_score": 1.0
+   },
+   "journey": {
+    "n": 22,
+    "pass": 16,
+    "check_score": 0.966
+   }
+  },
+  "p50_ms": 7869,
+  "p95_ms": 13707,
+  "card_p50_ms": 8171,
+  "card_p95_ms": 10598,
+  "tokens_in": 518351,
+  "tokens_out": 141497
+ },
+ "grades": [
+  {
+   "id": "clear-01",
+   "group": "clear",
+   "pass": false,
+   "check_score": 0.875,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'هدفون بلوتوث انکر SoundCore Space Q45']"
+     ],
+     "checks": 8
+    }
+   ]
+  },
+  {
+   "id": "clear-02",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "clear-03",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "clear-04",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "clear-05",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "clear-06",
+   "group": "clear",
+   "pass": false,
+   "check_score": 0.833,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت مچی کاسیو زنانه مدل LTP-V006D-7B2UD', 'ساعت زنانه کاسیو مدل LTP-VT02BL-1AUDF']"
+     ],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "clear-07",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-08",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-09",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-10",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-11",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "clear-12",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-13",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "clear-14",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "clear-15",
+   "group": "clear",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-01",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "messy-02",
+   "group": "messy",
+   "pass": false,
+   "check_score": 0.8,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'هدفون بلوتوث انکر SoundCore Space Q45']"
+     ],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "messy-03",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-04",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-05",
+   "group": "messy",
+   "pass": false,
+   "check_score": 0.667,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "missing products",
+      "category~هدست|هدفون: no cards"
+     ],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "messy-06",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-07",
+   "group": "messy",
+   "pass": false,
+   "check_score": 0.8,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['اسپیکر بی سیم پرودو مدل Soundtec Star Li', 'اسپیکر بلوتوثی قابل حمل جی بی ال مدل Cha']"
+     ],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "messy-08",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "messy-09",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-10",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-11",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "messy-12",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-13",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "messy-14",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "messy-15",
+   "group": "messy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "budget-01",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-02",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "budget-03",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['اسپیکر بلوتوثی قابل حمل یسیدو مدل YSW33', 'اسپیکر بلوتوثی قابل حمل الدینیو مدل BTS1']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-04",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "budget-05",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "budget-06",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-07",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت هوشمند گلوریمی مدل GC AIR', 'ساعت هوشمند کیسلکت مدل Calling Watch Kr2']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-08",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.75,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ماوس لاجیتک M90 باسیم', 'ماوس لاجیتک مدل M171 بی سیم']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-09",
+   "group": "budget",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "budget-10",
+   "group": "budget",
+   "pass": false,
+   "check_score": 0.857,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "within_budget: over budget: ['هندزفری بی\\u200cسیم یسیدو مدل JB28', 'هدفون بلوتوث انکر SoundCore Space Q45']"
+     ],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "copy-01",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "copy-02",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "copy-03",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "copy-04",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "copy-05",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "copy-06",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "copy-07",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "copy-08",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "copy-09",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "copy-10",
+   "group": "copy",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "loc-01",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 6
+    }
+   ]
+  },
+  {
+   "id": "loc-02",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "loc-03",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-04",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "loc-05",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-06",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-07",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "loc-08",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-09",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "loc-10",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-11",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-12",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "loc-13",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-14",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "loc-15",
+   "group": "location",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "follow-01",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "follow-02",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-03",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "follow-04",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "follow-05",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-06",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "follow-07",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-08",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-09",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "follow-10",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-11",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "follow-12",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-13",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-14",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "follow-15",
+   "group": "followup",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "hub-01",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "hub-02",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-03",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-04",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-05",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-06",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-07",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "hub-08",
+   "group": "hub",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "call-01",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "call-02",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "call-03",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "call-04",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "call-05",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "call-06",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "call-07",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "call-08",
+   "group": "call",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "off-01",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "off-02",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-03",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "off-04",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-05",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "off-06",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-07",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-08",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-09",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "off-10",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "off-11",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "off-12",
+   "group": "offtopic",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "inj-01",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "inj-02",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "inj-03",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    }
+   ]
+  },
+  {
+   "id": "inj-04",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 5
+    }
+   ]
+  },
+  {
+   "id": "inj-05",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "inj-06",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "inj-07",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "inj-08",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "inj-09",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "inj-10",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "inj-11",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "inj-12",
+   "group": "injection",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-01",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 5
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-02",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.889,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [
+      "within_budget: over budget: ['ساعت هوشمند کیسلکت مدل KS2 با نمایشگر AM', 'ساعت هوشمند گلوریمی مدل gs1 pro 2024']"
+     ],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 1
+    }
+   ]
+  },
+  {
+   "id": "journey-03",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-04",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.889,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "cheaper_than_before: median 2280000 not below 2280000"
+     ],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-05",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-06",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-07",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.889,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [
+      "missing call"
+     ],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-08",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-09",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-10",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.857,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [
+      "turn skipped: chip «فردا ۱۰ صبح» not on screen"
+     ],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-11",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.857,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [
+      "missing call"
+     ],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-12",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-13",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-14",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 1
+    }
+   ]
+  },
+  {
+   "id": "journey-15",
+   "group": "journey",
+   "pass": false,
+   "check_score": 0.875,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [
+      "turn skipped: chip «فرقی نداره» not on screen"
+     ],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-16",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 4
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 1
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-17",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-18",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-19",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-20",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  },
+  {
+   "id": "journey-21",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 2
+    },
+    {
+     "turn": 4,
+     "fails": [],
+     "checks": 2
+    }
+   ]
+  },
+  {
+   "id": "journey-22",
+   "group": "journey",
+   "pass": true,
+   "check_score": 1.0,
+   "turns": [
+    {
+     "turn": 1,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 2,
+     "fails": [],
+     "checks": 3
+    },
+    {
+     "turn": 3,
+     "fails": [],
+     "checks": 3
+    }
+   ]
+  }
+ ]
+}
