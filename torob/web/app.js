@@ -70,14 +70,28 @@ const farFromBottom = () => document.documentElement.scrollHeight - window.scrol
 let readingUp = false;
 window.addEventListener("wheel", () => { readingUp = farFromBottom(); }, { passive: true });
 window.addEventListener("touchmove", () => { readingUp = farFromBottom(); }, { passive: true });
-const scrollEnd = () => { if (!replaying && !readingUp) window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" }); };   // smooth scrolling is dropped by some browsers mid-stream
-// Images and maps finish loading after the scroll and push the answer down: keep following while it grows (during a
-// turn and a few seconds after it), unless the shopper has scrolled up to read.
+// One gentle glide to the bottom, re-aimed when more content lands while it moves (native smooth scrolling is dropped
+// by some browsers mid-stream, and instant jumps on every piece read as jitter). Respects reduced motion.
+let glide = 0;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function glideToBottom() {
+  if (replaying || readingUp) return;
+  const target = () => document.documentElement.scrollHeight - window.innerHeight;
+  if (reduceMotion) return window.scrollTo(0, target());
+  if (glide) return;   // already moving: it aims at the new bottom on its next frame
+  const step = () => {
+    const gap = target() - window.scrollY;
+    if (readingUp || gap <= 1) { glide = 0; return; }
+    window.scrollTo(0, window.scrollY + Math.max(1, gap * 0.18));   // ease out: fast, then settles
+    glide = setTimeout(step, 16);   // a timer, not animation frames: those never fire in some embedded browsers
+  };
+  glide = setTimeout(step, 0);
+}
+const scrollEnd = glideToBottom;
+// Images and maps finish loading after the answer and push it down: keep following while it grows (during a turn and
+// a few seconds after it), unless the shopper has scrolled up to read.
 let followUntil = 0;
-new ResizeObserver(() => {
-  if (!replaying && !readingUp && (busy || performance.now() < followUntil))
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
-}).observe(document.querySelector("#stream"));
+new ResizeObserver(() => { if (busy || performance.now() < followUntil) glideToBottom(); }).observe(document.querySelector("#stream"));
 
 // --- the radish: one animated mascot that acts out what the assistant is doing ------------------------------------
 // Frames come from radish-sheet.png (built by torob/tools/radish_sprites.py). A switch plays the old state's props
@@ -972,30 +986,44 @@ const SPEECH_ERR = {
   "audio-capture": "میکروفونی پیدا نشد.", "no-speech": "صدایی نشنیدم؛ دوباره امتحان کن.",
   "language-not-supported": "این مرورگر گفتار فارسی رو نمی‌شناسه؛ با Edge یا Chrome امتحان کن.",
 };
-let rec = null;
-function micIdle() { rec = null; $("#mic").classList.remove("on"); $("#mic").setAttribute("aria-pressed", "false"); }
+let rec = null, micPending = false, micBefore = null;
+function micIdle() { rec = null; micPending = false; $("#mic").classList.remove("on"); $("#mic").setAttribute("aria-pressed", "false"); }
+function micCancel() {   // a second tap: stop listening and put back what the box had before
+  const r = rec;
+  micIdle();
+  if (r) { r.onresult = null; r.onend = null; try { r.abort(); } catch (_) {} }
+  if (micBefore !== null) { $("#text").value = micBefore; fitText(); syncSend(); }
+  micBefore = null;
+  if (!busy) Radish.set($("#text").value.trim() ? "listen" : "idle");
+}
 $("#mic").addEventListener("click", async () => {
-  if (rec) { rec.stop(); return; }
+  if (rec || micPending) return micCancel();   // tapped again (also while the permission prompt is still up)
   if (!Speech) return showError("این مرورگر تبدیل گفتار به متن نداره (Edge و Chrome دارن)؛ بنویس.");
   if (!navigator.mediaDevices?.getUserMedia) return showError("میکروفون فقط روی https در دسترسه.");
+  micPending = true;
+  $("#mic").classList.add("on"); $("#mic").setAttribute("aria-pressed", "true");
+  const t = $("#text"), before = t.value.trim();
+  micBefore = t.value;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });   // the permission prompt
-    stream.getTracks().forEach((t) => t.stop());
+    stream.getTracks().forEach((x) => x.stop());
   } catch (e) {
-    return showError(e.name === "NotFoundError" ? SPEECH_ERR["audio-capture"] : SPEECH_ERR["not-allowed"]);
+    const was = micPending;
+    micIdle();
+    return was ? showError(e.name === "NotFoundError" ? SPEECH_ERR["audio-capture"] : SPEECH_ERR["not-allowed"]) : undefined;
   }
+  if (!micPending) return;   // cancelled while the prompt was up
+  micPending = false;
   const r = rec = new Speech();
   r.lang = "fa-IR"; r.interimResults = true; r.continuous = false;
-  const t = $("#text"), before = t.value.trim();
   r.onresult = (e) => {
     const heard = [...e.results].map((x) => x[0].transcript).join(" ").trim();
     t.value = before ? `${before} ${heard}` : heard;
     fitText(); syncSend();
   };
   r.onerror = (e) => { if (e.error !== "aborted") showError(SPEECH_ERR[e.error] || `تبدیل گفتار انجام نشد (${e.error}).`); };
-  r.onend = () => { micIdle(); if (!busy) Radish.set(t.value.trim() ? "listen" : "idle"); t.focus(); };
+  r.onend = () => { micIdle(); micBefore = null; if (!busy) Radish.set(t.value.trim() ? "listen" : "idle"); t.focus(); };
   try { r.start(); } catch (_) { micIdle(); return; }
-  $("#mic").classList.add("on"); $("#mic").setAttribute("aria-pressed", "true");
   if (!busy) Radish.set("listen");
 });
 $("#attach").addEventListener("click", () => $("#file").click());

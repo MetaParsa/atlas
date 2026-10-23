@@ -371,3 +371,34 @@ def test_live_price_far_from_the_dataset_price_is_another_product():
     title = "گوشی سامسونگ S26 Ultra 5G | حافظه 256 رم 12 گیگابایت"
     assert match_product(title, res, 366_450_000)["random_key"] == "b"   # the one near the dataset price
     assert match_product(title, res[:1], 366_450_000) is None            # only an accessory-priced hit: no live price
+
+
+def test_taps_and_contact_results_are_in_the_conversation_and_a_bare_hold_goes_to_the_plan_shop():
+    """«بگو نگهش داره» after a text to a shop asked «به کدومشون زنگ بزنم؟»: the router had never seen the taps."""
+    from datetime import datetime
+
+    import pytest
+    from torob import clock, store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from core.agent_loop import Emitter
+    from torob.agents import call as call_engine
+    from torob.models import Chip
+    from torob.router import _on_screen, run_turn
+    try:
+        st, shop = _to_call(datetime(2026, 10, 22, 12, 0))
+        call_engine.set_overrides({shop["shop_id"]: "ok"})
+        em = Emitter("s")
+        list(run_turn(_rule_llm(), st, em, chip=Chip(**shop["button"])))
+        roles = [(h["role"], h["content"]) for h in st.history]
+        assert any(r == "user" and c.startswith("(زد:") for r, c in roles)
+        assert any(r == "assistant" and c.startswith(f"تماس با {shop['name']}") for r, c in roles)
+        if st.plan:
+            assert st.plan["name"] in _on_screen(st)
+            em = Emitter("s")
+            list(run_turn(_rule_llm(), st, em, text="زنگ بزن بگو نگهش داره"))
+            starts = [d for e, d in em.events if e == "call_start"]
+            assert starts and starts[0]["shop_id"] == st.plan["shop_id"]
+    finally:
+        call_engine.set_overrides(None)
+        clock.set_now(None)

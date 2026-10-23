@@ -209,6 +209,12 @@ def _place_line(state: SessionState) -> str:
 
 def _on_screen(state: SessionState) -> str:
     """What the shopper is looking at, for the router: «کدومش بهتره؟» is about these cards, not a new search."""
+    plan = (f" برنامه‌ی خرید الان: «{state.plan.get('name')}»؛ «زنگ بزن» یا «نگهش داره» بدون اسم یعنی همین فروشگاه."
+            if state.plan else "")
+    return _on_screen_cards(state) + plan
+
+
+def _on_screen_cards(state: SessionState) -> str:
     cost = lambda n: f" ({format_price_short(n)} تومان)" if n else ""
     if state.last_block_kind == "shops" and state.shops_shown:
         product = next((p["title"] for p in state.products_shown if p["product_id"] == state.selected_product_id), "")
@@ -550,7 +556,24 @@ def call_shop(state: SessionState, em: Emitter, shop_id: str, hold: bool = False
                                   "location": result.location, "hold_until": result.hold_until,
                                   "style": "simulated"})
     state.calls[call_id] = result.as_dict()
+    state.remember("assistant", f"تماس با {s['name']}: {_contact_summary(result)}")
     yield from _after_contact(state, em, o, res, result, hold, offer_sms=True)
+
+
+def _contact_summary(r) -> str:
+    """What a (simulated) call or text found, in one line for the conversation memory."""
+    if r.outcome == "no_answer":
+        return "جواب نداد (شبیه‌سازی)"
+    if r.outcome == "unavailable":
+        return "نداشت (شبیه‌سازی)"
+    bits = ["موجود (شبیه‌سازی)"]
+    if r.price_today:
+        bits.append(f"امروز {format_price_short(r.price_today)} تومان")
+    if r.hold_until:
+        bits.append(f"تا {to_fa_digits(r.hold_until)} نگه می‌داره")
+    if r.location:
+        bits.append(r.location)
+    return "، ".join(bits)
 
 
 def _after_contact(state: SessionState, em: Emitter, o, res, result, hold: bool, offer_sms: bool = False) -> Iterator[str]:
@@ -620,6 +643,7 @@ def _chip_sms_shop(state: SessionState, em: Emitter, args: CallShopArgs) -> Iter
                                   "price_change": call_engine.price_change_text(result), "location": result.location,
                                   "hold_until": result.hold_until, "style": "simulated"})
     state.calls[sms_id] = result.as_dict()
+    state.remember("assistant", f"پیامک به {s['name']}: {_contact_summary(result)}")
     yield from _after_contact(state, em, o, res, result, hold=True)
 
 
@@ -687,7 +711,7 @@ def _relevance_judge(state: SessionState, em: Emitter):
     """With a model: it checks which found products are the thing asked for, in the shopper's own words."""
     if em.llm is None or not getattr(em.llm, "enabled", False):
         return None
-    said = [h["content"] for h in state.history if h.get("role") == "user"][-2:]
+    said = [h["content"] for h in state.history if h.get("role") == "user" and not h["content"].startswith("(زد:")][-2:]
     want = " / ".join(said)
     if state.need:   # the router's reading too: «airpods pro 2» against Persian titles needs «ایرپاد پرو ۲» as well
         meant = " · ".join(x for x in (state.need.named_product, state.need.product_type, *state.need.keywords[:2]) if x)
@@ -722,7 +746,7 @@ def start_filters_early(llm: LLMClient, state: SessionState, text: str, session_
     cats = tuple(search.candidates(guess.need)[1][:2])
     if not cats:
         return None
-    said = [h["content"] for h in state.history if h.get("role") == "user"] + [text]
+    said = [h["content"] for h in state.history if h.get("role") == "user" and not h["content"].startswith("(زد:")] + [text]
     current = list(state.filters)
     return cats, _EARLY.submit(filter_builder.build, llm, said, guess.need.product_type, cats, current, session_id)
 
@@ -739,7 +763,7 @@ def build_filters(state: SessionState, em: Emitter, early=None) -> None:
         except Exception:
             got = None
     if got is None:
-        said = [h["content"] for h in state.history if h.get("role") == "user"]
+        said = [h["content"] for h in state.history if h.get("role") == "user" and not h["content"].startswith("(زد:")]
         got = filter_builder.build(em.llm, said, state.need.product_type, cats, state.filters, em.session_id)
     if got is not None:
         state.filters, state.filter_suggest = got
@@ -1072,6 +1096,8 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
         except ValidationError:
             yield em.emit("error", {"text": "این گزینه دیگه در دسترس نیست."})
             return
+        if chip.label and chip.tool not in ("set_conditions", "noop"):   # a tap is the shopper's turn too: the
+            state.remember("user", f"(زد: {chip.label[:60]})")            # next typed message builds on it
         yield from fn(state, em, args)
         return
     text = (chip.value if chip else text or "").strip()
@@ -1130,6 +1156,10 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield say(state, em, "اول فروشنده‌ها رو پیدا کنیم؛ بعد برات زنگ می‌زنم.")
             return
         shop = _resolve_shop(state, f"{out.target} {text}")
+        if shop is None:   # «بگو نگهش داره»: the shop in the plan, else the one just called or texted
+            last = state.plan.get("shop_id") if state.plan else None
+            last = last or next((c["shop_id"] for c in reversed(state.calls.values())), None)
+            shop = next((s for s in state.shops_shown if s["shop_id"] == last), None) if last else None
         if shop is None:
             yield from _which_shop(state, em)
         else:   # the user asked («بپرس») — that is the permission rule 5 needs
