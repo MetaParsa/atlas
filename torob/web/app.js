@@ -707,13 +707,15 @@ function renderPlan(p, quiet = false) {
 const RADII = [[1, "۱ کیلومتر"], [3, "۳ کیلومتر"], [10, "۱۰ کیلومتر"], [null, "کل تهران"]];
 const BUDGETS = [[1e6, "تا ۱ میلیون"], [3e6, "تا ۳ میلیون"], [10e6, "تا ۱۰ میلیون"], [50e6, "تا ۵۰ میلیون"], [null, "فرقی نداره"]];
 let lastBudgetSteps = null;   // the steps suggested for the current search (the budget question's buttons)
-// «۲٫۵» = 2.5 million, «۸۰۰ هزار» = 800 thousand, «۲۵۰۰۰۰۰» = toman as written
+// «۲٫۵» or «۲ تومن» = 2.5 / 2 million, «۸۰۰ هزار» or «۵۰۰ تومن» = thousands (Tehran slang), «۲۵۰۰۰۰۰» = toman as written
 function parseBudget(text) {
   const t = toLatin(text).replace(/[,٬\s]/g, "");
   const n = parseFloat(t.replace(/[^\d.]/g, ""));
   if (!(n > 0)) return null;
+  if (/میلیون|م$/.test(t)) return Math.round(n * 1e6);
   if (/هزار|k/i.test(t)) return Math.round(n * 1e3);
-  return n >= 1000 ? Math.round(n) : Math.round(n * 1e6);
+  if (n >= 10000) return Math.round(n);
+  return n >= 50 ? Math.round(n * 1e3) : Math.round(n * 1e6);
 }
 const PAYMENTS = [["any", "همه"], ["credit", "قسطی"], ["credit_in_person", "قسطی حضوری"]];
 const OPENS = [["at_arrival", "باز تا وقتی برسم"], ["now", "باز الان"], ["any", "مهم نیست"]];

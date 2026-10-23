@@ -53,8 +53,9 @@ _STOP = set("یه یک می خوام میخوام خواستم برای با ا�
 
 
 def _budget(t: str) -> int | None:
-    """«تا ۳ میلیون» → 3M, «تا ۵۰۰ هزار» → 500k, «زیر ۳۰۰ تومن» → 300k (colloquial تومن = thousand),
-    «تا ۲۵۰۰۰۰۰ تومان» → 2.5M. A bare small number counts as millions; «تا ۸ شب» is a time, not a budget."""
+    """«تا ۳ میلیون» → 3M, «تا ۵۰۰ هزار» → 500k, «زیر ۳۰۰ تومن» → 300k and «تا ۲ تومن» → 2M (Tehran slang: a few
+    «تومن» are millions, hundreds are thousands), «تا ۲۵۰۰۰۰۰ تومان» → 2.5M. A bare small number counts as millions;
+    «تا ۸ شب» is a time, not a budget."""
     for m in _BUDGET.finditer(t):
         n, unit = float(m.group(1).replace(",", "")), m.group(2) or ""
         if not unit and _TIME_WORDS.match(t[m.end():]):
@@ -64,7 +65,7 @@ def _budget(t: str) -> int | None:
         if unit == "هزار":
             return int(n * 1_000)
         if unit in ("تومن", "تومان"):
-            return int(n) if n >= 10_000 else int(n * 1_000)
+            return int(n) if n >= 10_000 else int(n * 1_000) if n >= 50 else int(n * 1_000_000)
         return int(n) if n >= 10_000 else int(n * 1_000_000)
     return None
 

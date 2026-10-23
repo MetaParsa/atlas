@@ -190,3 +190,9 @@ def test_router_replies_through_a_schema_and_never_leaks_a_nudge():
     def down(n, kw):
         raise LLMError("timeout")
     assert understand(llm(down)[0], SessionState(), "شارژر سامسونگ", "s").intent == "need"   # rules
+
+
+def test_slang_budgets():
+    from torob.router import rule_route
+    assert rule_route("تا ۲ تومن").conditions_patch == {"budget_max": 2_000_000}      # a few «تومن» = millions
+    assert rule_route("زیر ۳۰۰ تومن").conditions_patch == {"budget_max": 300_000}    # hundreds = thousands
