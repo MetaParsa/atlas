@@ -19,8 +19,17 @@ CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS searches(text TEXT PRIMARY KEY, n INTEGER NOT NULL, last REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS live_cache(key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS browser_sessions(sid TEXT PRIMARY KEY, bid TEXT NOT NULL, created REAL);
+CREATE INDEX IF NOT EXISTS browser_sessions_bid ON browser_sessions(bid);
 """
 KEEP_DAYS = 7
+
+
+def ref_of(sid: str) -> str:
+    """What the page sees for a past conversation: a hash of its session id, so the id itself (the session's key)
+    never reaches page scripts."""
+    import hashlib
+    return hashlib.sha256(f"past|{sid}".encode()).hexdigest()[:16]
 _PRIVATE = re.compile(r"[0-9۰-۹٠-٩]{5,}|@|https?:|www\.", re.I)   # phone/card numbers, emails, links never become suggestions
 
 
@@ -127,6 +136,39 @@ class AppDB:
                 "errors": [{"at": time.strftime("%m-%d %H:%M", time.localtime(ts)), "text": d.get("text"),
                             "detail": d.get("detail")} for ts, d in errors]}
 
+    # --- chat history: the conversations of one browser (a private `bid` cookie), never anyone else's ----------
+
+    def link(self, bid: str, sid: str) -> None:
+        with self._lock:
+            self._con.execute("INSERT OR IGNORE INTO browser_sessions(sid, bid, created) VALUES (?,?,?)",
+                              (sid, bid, time.time()))
+
+    def past(self, bid: str, exclude: str | None, limit: int = 6) -> list[dict]:
+        """This browser's earlier conversations, newest first: a short ref (not the session id), the first thing
+        the shopper said, and when."""
+        with self._lock:
+            rows = self._con.execute(
+                "SELECT b.sid, s.updated FROM browser_sessions b JOIN sessions s ON s.id = b.sid "
+                "WHERE b.bid = ? AND b.sid != ? ORDER BY s.updated DESC LIMIT ?", (bid, exclude or "", limit * 2)).fetchall()
+            out = []
+            for sid, updated in rows:
+                first = self._con.execute("SELECT data FROM events WHERE session_id = ? AND event = 'user' ORDER BY id "
+                                          "LIMIT 1", (sid,)).fetchone()
+                text = (json.loads(first[0]).get("text") or "").strip() if first else ""
+                if text:
+                    out.append({"ref": ref_of(sid), "title": text[:80], "at": updated})
+        return out[:limit]
+
+    def owned(self, bid: str, ref: str) -> str | None:
+        """The session id behind `ref`, only if it belongs to this browser."""
+        with self._lock:
+            sids = [r[0] for r in self._con.execute("SELECT sid FROM browser_sessions WHERE bid = ?", (bid,)).fetchall()]
+        return next((s for s in sids if ref_of(s) == ref), None)
+
+    def forget(self, bid: str) -> None:
+        with self._lock:
+            self._con.execute("DELETE FROM browser_sessions WHERE bid = ?", (bid,))
+
     def record_search(self, text: str | None) -> None:
         """A first message that found products: counted for the start screen's popular searches."""
         t = searchable(text)
@@ -160,3 +202,4 @@ class AppDB:
             self._con.execute("DELETE FROM sessions WHERE updated < ?", (cutoff,))
             self._con.execute("DELETE FROM searches WHERE last < ?", (cutoff,))
             self._con.execute("DELETE FROM live_cache WHERE fetched < ?", (time.time() - 2 * 86400,))
+            self._con.execute("DELETE FROM browser_sessions WHERE sid NOT IN (SELECT id FROM sessions)")

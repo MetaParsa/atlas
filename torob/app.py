@@ -7,6 +7,7 @@ import signal
 import sqlite3
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from functools import lru_cache
 from pathlib import Path
@@ -519,6 +520,7 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
             _busy.pop(s, None)
             _busy_ip.pop(s, None)
     em = Emitter(sid, sink=adb.log_event)
+    bid = _bid(request)
     said = (text if text is not None else bubble or "").strip()
     if said or image:   # the user's side of the chat, for /api/history (a photo keeps only its small preview)
         adb.log_event(sid, "user", {"text": said, **({"image": thumb} if thumb else {})})
@@ -549,6 +551,7 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
                     em.paused += delay  # …and the pacing isn't counted as response time on /admin
         finally:
             adb.save(sid, state)   # also when the client disconnects mid-stream
+            adb.link(bid, sid)     # this browser's chat history
             if first_search and any(e == "product_cards" and d.get("items") for e, d in em.events):
                 adb.record_search(text)
             with _busy_lock:
@@ -557,4 +560,46 @@ def _turn_response(request: Request, sid: str | None, text: str | None = None, c
 
     resp = StreamingResponse(stream(), media_type="text/event-stream", headers=STREAM_HEADERS)
     resp.set_cookie("sid", sid, httponly=True, samesite="lax", secure=is_https(request), max_age=7 * 24 * 3600)
+    resp.set_cookie("bid", bid, httponly=True, samesite="lax", secure=is_https(request), max_age=30 * 24 * 3600)
     return resp
+
+
+def _bid(request: Request) -> str:
+    """This browser's private id (its chat history), a fresh one if it has none or a malformed one."""
+    b = request.cookies.get("bid") or ""
+    return b if len(b) == 32 and b.isalnum() else uuid.uuid4().hex
+
+
+@app.get("/api/past")
+def past(request: Request, response: Response, sid: str | None = Cookie(default=None, max_length=64)) -> dict:
+    """The start screen's history: this browser's earlier conversations (titles and times only)."""
+    response.headers["Cache-Control"] = PRIVATE
+    b = request.cookies.get("bid")
+    return {"items": appdb().past(b, sid) if b else []}
+
+
+class ResumeIn(BaseModel):
+    ref: str = Field(max_length=32)
+
+
+@app.post("/api/resume")
+def resume(body: ResumeIn, request: Request) -> JSONResponse:
+    """Reopen one of this browser's conversations: the session cookie points at it; the page reloads its chat."""
+    if not same_origin(request):
+        return JSONResponse({"error": "این درخواست از سایت دیگری آمده."}, status_code=403)
+    b = request.cookies.get("bid")
+    target = appdb().owned(b, body.ref) if b else None
+    if target is None:
+        return JSONResponse({"error": "این گفت‌وگو دیگه نیست."}, status_code=404)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("sid", target, httponly=True, samesite="lax", secure=is_https(request), max_age=7 * 24 * 3600)
+    return resp
+
+
+@app.post("/api/past/clear")
+def past_clear(request: Request) -> JSONResponse:
+    if not same_origin(request):
+        return JSONResponse({"error": "این درخواست از سایت دیگری آمده."}, status_code=403)
+    if b := request.cookies.get("bid"):
+        appdb().forget(b)
+    return JSONResponse({"ok": True})

@@ -239,21 +239,34 @@ function remember(text) {
   const t = text.trim().replace(/\s+/g, " ").slice(0, 120);
   saveRecent([t, ...recentSearches().filter((s) => s !== t)].slice(0, RECENT_MAX));
 }
-async function renderSuggestions() {
+async function renderSuggestions() {   // the start screen: your earlier conversations (tap = reopen it), else popular searches
   const box = $("#suggest");
   if (!box) return;
-  const recent = recentSearches();
-  if (recent.length) {
+  let past = [];
+  try { past = (await (await fetch("/api/past")).json()).items || []; } catch (_) {}
+  if (past.length) {
+    const when = (at) => {
+      const min = Math.max(1, Math.round((Date.now() / 1000 - at) / 60));
+      return min < 60 ? `${fa(min)} دقیقه پیش` : min < 1440 ? `${fa(Math.round(min / 60))} ساعت پیش` : `${fa(Math.round(min / 1440))} روز پیش`;
+    };
+    const reopen = async (ref) => {
+      try { const r = await fetch("/api/resume", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ref }) });
+            if (r.ok) return location.reload(); } catch (_) {}
+      showError("این گفت‌وگو دیگه در دسترس نیست.");
+    };
     box.replaceChildren(
-      el("div", { class: "suggest-h" }, el("span", { text: "جست‌وجوهای اخیرت" }),
-        el("button", { type: "button", class: "ghost", text: "پاک کردن", onclick: () => { saveRecent([]); renderSuggestions(); } })),
-      el("div", { class: "recent" }, recent.map((t) => el("button", { type: "button", onclick: () => say(t) }, icon("clock"), el("span", { text: t })))));
+      el("div", { class: "suggest-h" }, el("span", { text: "گفت‌وگوهای قبلیت" }),
+        el("button", { type: "button", class: "ghost", text: "پاک کردن", onclick: async () => {
+          try { await fetch("/api/past/clear", { method: "POST" }); } catch (_) {}
+          renderSuggestions(); } })),
+      el("div", { class: "recent" }, past.map((x) => el("button", { type: "button", title: "باز کردن همین گفت‌وگو", onclick: () => reopen(x.ref) },
+        icon("clock"), el("span", { text: x.title }), el("small", { class: "when", text: when(x.at) })))));
     return;
   }
   box.replaceChildren();
   let popular = [];
   try { popular = (await (await fetch("/api/popular")).json()).searches || []; } catch (_) {}
-  if (popular.length && !recentSearches().length) {   // exactly what people typed, no heading
+  if (popular.length) {   // exactly what people typed, no heading
     box.replaceChildren(el("div", { class: "chips" }, popular.map((t) => el("button", { type: "button", class: "chip", text: t, onclick: () => say(t) }))));
   }
 }

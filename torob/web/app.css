@@ -649,3 +649,5 @@ table.compare td:first-child { color: var(--muted); }
 .fchip .fx { font-weight: 700; opacity: .8; }
 .fchip.on { color: var(--navy-ink); background: var(--navy); border-color: var(--navy); }
 .filters-row:not(.live) { opacity: .55; }
+.recent button .when { margin-inline-start: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.recent button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

@@ -402,3 +402,30 @@ def test_taps_and_contact_results_are_in_the_conversation_and_a_bare_hold_goes_t
     finally:
         call_engine.set_overrides(None)
         clock.set_now(None)
+
+
+def test_chat_history_is_per_browser_and_reopens_only_its_own_conversations(tmp_path, monkeypatch):
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from fastapi.testclient import TestClient
+    from torob import app as app_mod
+    from torob.appdb import AppDB
+    adb = AppDB(tmp_path / "app.db")
+    monkeypatch.setattr(app_mod, "appdb", lambda: adb)
+    monkeypatch.setenv("CALL_LINE_DELAY", "0")
+    me, other = TestClient(app_mod.app), TestClient(app_mod.app)
+    me.post("/api/chat", json={"text": "پاوربانک"})
+    me.post("/api/reset"); me.cookies.delete("sid")
+    me.post("/api/chat", json={"text": "هندزفری بلوتوث"})
+    other.post("/api/chat", json={"text": "اسپیکر"})
+    items = me.get("/api/past").json()["items"]
+    assert [x["title"] for x in items] == ["پاوربانک"]           # earlier one only; the current one isn't listed
+    assert other.get("/api/past").json()["items"] == []          # another browser sees none of mine
+    assert other.post("/api/resume", json={"ref": items[0]["ref"]}).status_code == 404   # nor can it open it
+    assert me.post("/api/resume", json={"ref": items[0]["ref"]}).status_code == 200
+    events = me.get("/api/history").json()["events"]
+    assert any(e["event"] == "user" and e["data"]["text"] == "پاوربانک" for e in events)   # the old chat is back
+    me.post("/api/past/clear")
+    assert me.get("/api/past").json()["items"] == []
