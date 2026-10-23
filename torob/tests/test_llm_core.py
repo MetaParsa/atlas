@@ -128,6 +128,18 @@ def test_claude_request_translates_photo_tools_and_history():
         {"type": "image", "source": {"type": "base64", "data": "QUJD", "media_type": "image/jpeg"}}]}]
 
 
+def test_sonnet_gets_its_own_thinking_setting_and_refusal_fallbacks():
+    from core.llm import AnthropicProvider, LLMClient
+    fake = _FakeMessages([_NS(type="text", text='{"a": 1}')], "end_turn")
+    p = AnthropicProvider("anthropic", "test-key", _client=_NS(messages=fake))
+    llm = LLMClient([p], {"router": "claude-sonnet-5-5"}, enabled=True)
+    llm.complete("router", [{"role": "user", "content": "سلام"}], schema={"type": "object"})
+    kw = fake.calls[0]
+    assert kw["thinking"] == {"type": "between_tools"}            # Sonnet 5.5 rejects «disabled»
+    assert kw["extra_body"] == {"fallbacks": "default"} and "server-side-fallback" in kw["extra_headers"]["anthropic-beta"]
+    assert kw["output_config"]["format"] == {"type": "json_schema", "schema": {"type": "object"}}
+
+
 def test_claude_tool_calls_round_trip_in_openai_shape():
     llm, fake = _claude([_NS(type="text", text=""), _NS(type="tool_use", id="tu1", name="lookup", input={"q": "x"})])
     tools = [{"type": "function", "function": {"name": "lookup", "description": "d",

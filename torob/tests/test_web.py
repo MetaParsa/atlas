@@ -165,11 +165,11 @@ def test_history_replays_only_this_sessions_chat(client):
     assert client.get("/api/history").json() == {"events": []}            # another visitor can't read it
 
 
-def test_default_llm_model_is_claude_haiku(monkeypatch):
+def test_default_llm_model_is_claude_sonnet(monkeypatch):
     from core.llm import from_env
-    for k in ("MODEL_ROUTER", "MODEL_CHAT", "MODEL_CALL"):
+    for k in ("MODEL_ROUTER", "MODEL_CHAT", "MODEL_CALL", "MODEL_VISION", "MODEL_JUDGE", "MODEL_UI"):
         monkeypatch.delenv(k, raising=False)
-    assert set(from_env().models.values()) == {"claude-haiku-5-5"}
+    assert set(from_env().models.values()) == {"claude-sonnet-5-5"}
 
 
 PHOTO = "data:image/jpeg;base64," + "A" * 400   # shape only; nothing decodes it without a model
