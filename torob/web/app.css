@@ -444,10 +444,7 @@ table.compare td:first-child { color: var(--muted); }
   .bar { min-height: 60px; padding-top: 10px; }
   #stream { grid-area: main; padding: 28px 0 80px; gap: 14px; }
   .plan-bar { display: none !important; }
-  #plan-slot, #plan-slot:empty { grid-area: side; display: block; position: sticky; top: var(--top-h, 110px); align-self: start; padding: 28px 0 0; }
-  #plan-slot:empty::before { content: "وقتی فروشنده رو انتخاب کنی و ازش بپرسم، برنامه‌ی خرید و مسیر همین‌جا می‌مونه.";
-                             display: block; padding: 18px; border-radius: var(--r); border: 1.5px dashed var(--fill-2);
-                             color: var(--muted); font-size: 14px; line-height: 1.8; text-align: center; }
+  #plan-slot { grid-area: side; display: block; position: sticky; top: var(--top-h, 110px); align-self: start; padding: 28px 0 0; }
   .composer { grid-area: comp; bottom: 16px; margin-bottom: 4px; border: 0; border-radius: 28px; padding: 8px;
               box-shadow: 0 0 0 .5px var(--line), 0 8px 30px rgba(0, 0, 0, .1); }
   .composer::after { content: ""; position: absolute; z-index: -1; inset: auto -24px -24px; height: 24px; background: var(--bg); }  /* nothing shows under the floating bar */
@@ -455,10 +452,12 @@ table.compare td:first-child { color: var(--muted); }
   .field:focus-within { box-shadow: none; }
   .dock { inset-inline-end: 22px; bottom: calc(100% - 4px); }
   .foot { grid-area: foot; position: relative; z-index: 6; background: transparent; padding: 6px 0 14px; }  /* above the strip that hides the chat under the input bar */
-  /* start screen with no plan yet: one centred column, no sidebar */
-  body:has(#start):has(#plan-slot:empty) #app { grid-template-columns: 1fr minmax(0, var(--col)) 1fr;
-                                                grid-template-areas: "top top top" ". main ." ". comp ." ". foot ."; }
-  body:has(#start) #plan-slot:empty { display: none; }
+  /* no plan yet (start screen or chatting): one centred column; the sidebar appears with the first plan */
+  body:has(#plan-slot:empty) #app { grid-template-columns: 1fr minmax(0, var(--col)) 1fr;
+                                    grid-template-areas: "top top top" ". main ." ". comp ." ". foot ."; }
+  body:has(#plan-slot:empty) .top > .bar, body:has(#plan-slot:empty) .top > .loc,
+  body:has(#plan-slot:empty) .top > .strip { padding-inline: max(24px, calc((100% - var(--col)) / 2)); }
+  #plan-slot:empty { display: none; }
   .start { max-width: 520px; margin-inline: auto; width: 100%; }
   .hero h1 { font-size: 34px; }
   .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); overflow: visible; padding: 2px 0 6px; margin: 0; }
@@ -626,3 +625,7 @@ table.compare td:first-child { color: var(--muted); }
   .hub-line:hover { background: var(--card-2); }
   .mv-tool:hover, .mini-open:hover { opacity: .85; }
 }
+
+/* the AI-built blocks look like every other card: no «چیده‌شده با هوش مصنوعی» tag, no red top edge */
+.gen-tag { display: none; }
+.gcard { border-top: 0; background: var(--card); }
