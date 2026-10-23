@@ -299,6 +299,11 @@ def pick_products(need: Need, cond: Conditions, judge=None) -> AdvisorResult:
         else:             # only the products that are the thing asked for compete
             reps, copies, n_matching, steps = j.kept, j.copies | _priced_like_copies(j.kept), len(j.kept), j.budget_steps
             fit = j.fit
+            if j.fakes:   # «گوشی موبایل … Redmi Note 10» at a part's price: not shown, and the shopper is told why
+                short = j.fakes[0].split("|")[0].strip()[:45]
+                more = f" و {to_fa_digits(len(j.fakes) - 1)} آگهی دیگه" if len(j.fakes) > 1 else ""
+                notes.append(f"«{short}»{more} اسمش {need.product_type or 'همین کالا'}ه ولی قیمتش مثل قطعه‌ست، "
+                             f"پس احتمالاً خود کالا نیست؛ نشونش ندادم.")
             # likely copies stay among the cards (the shopper may want the cheap one); each card carries the flag,
             # and the answer step mentions it when the shopper asks about originality, price or which to buy
     stats = area_stats([c.product_id for c in reps[:150]], cond)

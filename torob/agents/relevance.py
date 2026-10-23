@@ -33,6 +33,9 @@ For EACH product decide whether a sensible salesperson would show it for this re
 - yes otherwise. Do not filter on the budget (the app does that with nearby prices), but do use price as evidence
   of what a product is (a speaker costing ten times the portable ones is a large home or party speaker). Soft wishes
   ("good", "cheap", "for the gym") never make it a no.
+- no, with fake=true: the title says it is the product but the listing clearly isn't: its price is a small fraction
+  (under about a fifth) of the other listings of the same kind here, i.e. priced like a spare part, case or board
+  (a «گوشی موبایل» at 4.5 million next to phones at 40–180 million is a mislabeled part or a wrong listing).
 Also mark copy=true when it looks like a copy or imitation of a brand-name product: the title says طرح / کپی / فیک,
 its price is under about half of other listings of the same model in this list, it costs less than a used one or a
 single spare part (one earbud, a case) of the same model in this list, or a premium brand's item (Apple, Samsung
@@ -49,7 +52,7 @@ Finally suggest "budget_steps": three budgets in toman, ascending (entry, middle
 with this request would pick between, judged from the prices of the products you marked show=true and from who it is
 for (an everyday item or a gift doesn't need to reach the most expensive listings).
 
-Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false, "fit": 0-3}}, ...], "budget_steps": [a, b, c]}}
+Reply as JSON: {{"items": [{{"i": index, "show": true|false, "copy": true|false, "fake": true|false, "fit": 0-3}}, ...], "budget_steps": [a, b, c]}}
 covering every index."""
 
 
@@ -59,6 +62,7 @@ class Judgement:
     copies: set[str] = field(default_factory=set)   # product_ids that look like copies
     budget_steps: list[int] = field(default_factory=list)   # the model's budget buttons (the advisor clamps them)
     fit: dict[str, int] = field(default_factory=dict)        # product_id -> 0..3, how well it serves the stated purpose
+    fakes: list[str] = field(default_factory=list)            # titles that claim to be the item but aren't (hidden, told)
 
 
 def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement | None:
@@ -88,4 +92,5 @@ def keep(llm: LLMClient, want: str, cands: list, session_id: str) -> Judgement |
         v = verdicts.get(i, {}).get("fit")
         if verdicts.get(i, {}).get("show") is True and isinstance(v, (int, float)):
             fit[c.product_id] = max(0, min(3, int(v)))
-    return Judgement(kept, copies, steps, fit)
+    fakes = [c.title for i, c in enumerate(items) if verdicts.get(i, {}).get("fake") is True]
+    return Judgement(kept, copies, steps, fit, fakes)

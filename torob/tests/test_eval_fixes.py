@@ -289,3 +289,18 @@ def test_neshan_is_used_when_it_answers_and_ignored_when_it_fails(monkeypatch):
     monkeypatch.setattr(neshan, "drive_minutes", lambda o, ds: [None] * len(ds))
     res = shops.find_shops(pid, cond)
     assert not any(o.traffic for o in res.items + res.more)
+
+
+def test_a_listing_that_claims_to_be_the_item_but_is_priced_like_a_part_is_hidden_and_explained():
+    import pytest
+    from torob import store
+    if not store.DB_PATH.exists():
+        pytest.skip("no dataset")
+    from torob.agents import advisor, relevance
+    from torob.models import Conditions, Need
+    need = Need(product_type="گوشی موبایل", keywords=["گوشی شیائومی"])
+    def judge(cands):
+        fake, kept = cands[0], cands[1:7]   # the judge says show=false, fake=true for the first one
+        return relevance.Judgement(kept, fakes=[fake.title])
+    res = advisor.pick_products(need, Conditions(radius_km=None), judge=judge)
+    assert any("قطعه" in n and "نشونش ندادم" in n for n in res.notes)
