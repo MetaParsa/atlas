@@ -280,7 +280,7 @@ function chip(c, bubble = c.label) {
   if (busy) return;
   if (c.kind === "direct_call") {
     if (bubble) { leaveStart(); stream.append(userBubble(bubble)); }
-    post("/api/chat", { chip: c, bubble: bubble || null });
+    return post("/api/chat", { chip: c, bubble: bubble || null });   // resolves when the turn has finished
   } else say(c.value || c.label);
 }
 function chipButton(c, cls = "chip", bubble, ic) {

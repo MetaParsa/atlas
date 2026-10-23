@@ -152,13 +152,20 @@
       ? [dot("lg-dot", "یک فروشنده"), dot("lg-hub", "بورس (بیشترین فروشنده)")]
       : [dot("lg-open", "تا برسی باز"), dot("lg-closed", "بسته"), dot("lg-unknown", "ساعت نامعلوم"), dot("lg-rank", "رتبه در فهرست")]));
   }
-  function locateMe() {
-    if (!navigator.geolocation) return showError("مرورگرت مکان رو نمی‌ده.");
-    navigator.geolocation.getCurrentPosition((p) => {
+  // «مکان من». With `onMoved` (the sellers map) the map stays open: the location is set in the background (the chat
+  // behind updates too) and the map redraws from where you are. Errors show in the map, not behind it.
+  function locateMe(onMoved) {
+    const say = (t) => (onMoved ? showPanel(el("div", { class: "mv-name", text: t })) : showError(t));
+    if (!navigator.geolocation) return say("مرورگرت مکان رو نمی‌ده.");
+    navigator.geolocation.getCurrentPosition(async (p) => {
       const { latitude: lat, longitude: lng } = p.coords;
-      if (!inTehran(lat, lng)) return showError("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره.");
-      act({ label: "مکان من", kind: "direct_call", tool: "set_location", args: { lat, lng, label: "مکان من", source: "gps" } }, "مکان من");
-    }, () => showError("اجازه‌ی مکان داده نشد."), { timeout: 8000 });
+      if (!inTehran(lat, lng)) return say("بیرون از تهرانی؛ داده‌ی ترب فقط تهران رو داره.");
+      const c = { label: "مکان من", kind: "direct_call", tool: "set_location", args: { lat, lng, label: "مکان من", source: "gps" } };
+      if (!onMoved) return act(c, "مکان من");
+      showPanel(el("div", { class: "mv-name", text: "دارم فاصله‌ها رو از جایی که هستی حساب می‌کنم…" }));
+      await chip(c, "مکان من");
+      onMoved();
+    }, () => say("اجازه‌ی مکان داده نشد؛ از نوار بالا یه محله انتخاب کن."), { timeout: 8000 });
   }
   // Tap on an empty spot: offer to search from there.
   function offerHere(e) {
@@ -178,14 +185,16 @@
   async function openProduct(productId, title) {
     const v = openView(`فروشنده‌های «${title}»`, "در حال بارگذاری…");
     let d;
-    try {
+    const load = async () => {
       const r = await fetch(`/api/map/product/${encodeURIComponent(productId)}`);
-      d = await r.json();
-      if (!r.ok) throw new Error(d.detail);
-    } catch (e) { v.sub.textContent = (e && e.message) || "نقشه باز نشد؛ دوباره امتحان کن."; return; }
+      const x = await r.json();
+      if (!r.ok) throw new Error(x.detail);
+      return x;
+    };
+    try { d = await load(); } catch (e) { v.sub.textContent = (e && e.message) || "نقشه باز نشد؛ دوباره امتحان کن."; return; }
     if (!V.map) return;
     const st = { open: false, credit: false, near: false, hubs: false };   // the bourse layer crowds the pins it sits on: one tap away
-    const c = d.center;
+    let c = d.center;
     const draw = (refit) => {
       v.layer.clearLayers(); hidePanel();
       meMarker(c).addTo(v.layer);
@@ -212,7 +221,11 @@
       filterChip("داخل محدوده", st.near, () => (st.near = !st.near, draw(true), st.near)),
       filterChip("بورس این دسته", st.hubs, () => (st.hubs = !st.hubs, draw(false), st.hubs)));
     v.filters._fade?.();
-    v.tools.append(toolButton("pin", "مکان من", locateMe),
+    const moved = async () => {   // same sellers, measured from the new place: centre, radius, open-at-arrival, pins
+      try { d = await load(); c = d.center; } catch (_) { return; }
+      if (V.map === v.map) draw(true);
+    };
+    v.tools.append(toolButton("pin", "مکان من", () => locateMe(moved)),
       toolButton("list", "همه", () => fit(v.map, [[c.lat, c.lng], ...d.points.map((p) => [p.lat, p.lon])])));
     legendFor("product");
     v.map.on("click", (e) => (V.panel.hidden ? offerHere(e) : hidePanel()));
@@ -298,7 +311,7 @@
     const c = cond?.center || { lat: 35.6935, lng: 51.415 };
     meMarker(c).addTo(v.layer);
     v.map.setView([c.lat, c.lng], 14);
-    v.tools.append(toolButton("pin", "مکان من", locateMe));
+    v.tools.append(toolButton("pin", "مکان من", () => locateMe()));
     v.map.on("click", offerHere);
   }
 
