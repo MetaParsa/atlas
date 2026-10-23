@@ -1158,3 +1158,21 @@ scenarios:
   - {must_show: [shops], facts: [shops_sell_product]}
   - {must_show: [call], facts: [sim_labelled]}
   ideal: "JBL Go 3 واقعی، فروشنده‌ها، تماس."
+
+# ─────────────── From a real conversation (2026-10-23) ───────────────
+- id: real-01-trip
+  group: journey
+  persona: کاربر واقعی که برای سفر شمال وسیله می‌خواهد، کوتاه و بی‌حوصله
+  setup: {clock: "2026-10-23T18:00"}
+  turns: ["کمکم کن برای مسافرتم به شمال برنامه ریزی کنم\nچه وسایلی باید بخرم", "خودت چند تا پیشنهاد بده",
+          "یه چراغ قوه ارزون تر میخوام", "میخوام حضوری بخرم", "کدومش بهم نزدیک تره",
+          "برو تو سایت فروشنده ها و ادرس و شماره تماسشونو پیدا کن", "هر کدوم"]
+  expect:
+  - {must_show: [question], must_not: [products]}
+  - {must_show: [products]}
+  - {must_show: [products], facts: ["category~چراغ"]}
+  - {must_show_any: [shops, question], must_not: [products]}
+  - {must_not: [products], facts: ["reply~دقیقه"]}
+  - {must_not: [products], facts: ["reply!~0912|۰۹۱۲|021|۰۲۱"]}
+  - {must_show: [shops]}
+  ideal: "اول بپرسد از کدام وسیله شروع کند؛ با «خودت پیشنهاد بده» یک نوع کالا بیاورد؛ چراغ‌قوه‌های ارزان؛ «حضوری بخرم» = فروشنده‌ها؛ نزدیک‌ترین را با دقیقه بگوید؛ بگوید آدرس روی کارت فروشنده‌هاست و شماره‌ها ساختگی‌اند و تماس شبیه‌سازی را پیشنهاد کند."
