@@ -114,6 +114,8 @@
       V.filters,
       el("div", { class: "mv-body" }, V.mapNode, V.tools, V.legend, V.panel));
     V.dlg.addEventListener("close", () => { V.map?.remove(); V.map = null; });
+    V.filters.classList.add("fade-x");
+    edgeFades(V.filters);
     document.body.append(V.dlg);
     return V;
   }
@@ -209,6 +211,7 @@
       filterChip("قسطی", st.credit, () => (st.credit = !st.credit, draw(false), st.credit)),
       filterChip("داخل محدوده", st.near, () => (st.near = !st.near, draw(true), st.near)),
       filterChip("بورس این دسته", st.hubs, () => (st.hubs = !st.hubs, draw(false), st.hubs)));
+    v.filters._fade?.();
     v.tools.append(toolButton("pin", "مکان من", locateMe),
       toolButton("list", "همه", () => fit(v.map, [[c.lat, c.lng], ...d.points.map((p) => [p.lat, p.lon])])));
     legendFor("product");

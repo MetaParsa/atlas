@@ -515,7 +515,9 @@ function productBlock(d) {
         p.copy_suspect ? el("div", { class: "over", text: "احتمالاً طرح یا کپیه (حدس هوش مصنوعی)" }) : null,
         p.button ? chipButton(p.button, "btn blue", `فروشنده‌های «${shortTitle(p.title)}»`, "store") : null)));
   }
-  block.append(row);
+  const wrap = el("div", { class: "row-wrap" }, row);
+  block.append(wrap);
+  edgeFades(row, wrap);
   if (d.compare_rows?.length) {
     const t = el("table", { class: "compare" },
       el("tr", {}, el("th", { text: "" }), items.map((p) => el("th", { text: p.role_label }))),
@@ -706,6 +708,21 @@ const OPENS = [["at_arrival", "باز تا وقتی برسم"], ["now", "باز 
 
 function km(r) { return r == null ? "کل تهران" : r < 1 ? `${fa(Math.round(r * 1000))} متر` : `${fa(r)} کیلومتر`; }
 
+// Sideways rows never end in a hard crop: the edge that still has more to scroll to gets a soft blur/fade
+// (CSS: .more-left / .more-right on `host`). RTL: scrollLeft is 0 at the start (right) and negative to the left.
+function edgeFades(scroller, host = scroller) {
+  const update = () => {
+    const max = scroller.scrollWidth - scroller.clientWidth, pos = Math.abs(scroller.scrollLeft);
+    host.classList.toggle("more-right", pos > 2);
+    host.classList.toggle("more-left", max - pos > 2);
+  };
+  scroller.addEventListener("scroll", update, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(update).observe(scroller);
+  scroller._fade = update;   // call after the contents change
+  requestAnimationFrame(update);
+  return update;
+}
+
 function setConditions(d) {
   cond = d;
   $("#loc-label").textContent = d.area || "تهران";
@@ -718,6 +735,7 @@ function setConditions(d) {
       d.payment !== "any" || d.fast_delivery);
   set("open", (OPENS.find((o) => o[0] === d.open) || OPENS[0])[1], d.open !== "at_arrival");
   set("arrive", d.arrive_label || (d.arrive_at ? `رسیدن ${fa(d.arrive_at)}` : "رسیدن: الان"), !!d.arrive_at);
+  strip._fade?.();
   const demo = $("#demo-time");
   demo.hidden = !d.demo_time;
   if (d.demo_time) demo.textContent = `زمان دمو ${fa(d.demo_time)}`;
@@ -865,6 +883,9 @@ async function restoreHistory() {
   window.scrollTo({ top: document.body.scrollHeight });
   return true;
 }
+
+strip.classList.add("fade-x");
+edgeFades(strip);
 
 (async () => {
   try {

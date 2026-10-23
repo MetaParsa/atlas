@@ -158,9 +158,25 @@ button:disabled, .busy-all .chip, .busy-all .btn, .busy-all .recent button, .bus
 .pill.blue { background: var(--blue-soft); color: var(--blue); }
 
 /* product cards */
-.row { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 16px 8px; margin: 0 -16px;
+.row { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 16px 8px;
        scroll-padding-inline: 16px; scrollbar-width: none; }
 .row::-webkit-scrollbar { display: none; }
+/* the card row bleeds to the screen edges; where more cards wait, that edge blurs and fades into the page */
+.row-wrap { position: relative; margin: 0 -16px; }
+.row-wrap::before, .row-wrap::after { content: ""; position: absolute; top: 0; bottom: 8px; width: 36px; z-index: 2; pointer-events: none;
+                                      opacity: 0; transition: opacity .25s ease;
+                                      -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.row-wrap::before { left: 0; background: linear-gradient(to right, var(--bg), transparent);
+                    -webkit-mask-image: linear-gradient(to right, #000 30%, transparent); mask-image: linear-gradient(to right, #000 30%, transparent); }
+.row-wrap::after { right: 0; background: linear-gradient(to left, var(--bg), transparent);
+                   -webkit-mask-image: linear-gradient(to left, #000 30%, transparent); mask-image: linear-gradient(to left, #000 30%, transparent); }
+.row-wrap.more-left::before, .row-wrap.more-right::after { opacity: 1; }
+/* strips of chips (filters): the cut-off edge fades out */
+.fade-x { --fl: 0px; --fr: 0px;
+          -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent); }
+.fade-x.more-left { --fl: 32px; }
+.fade-x.more-right { --fr: 32px; }
 .pcard { flex: 0 0 calc(50% - 22px); min-width: 158px; scroll-snap-align: start; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .pimg { position: relative; display: grid; place-items: center; height: 118px; background: #fff; margin: 5px 5px 0; border-radius: var(--r-m); }
 .pimg img { max-width: 78%; max-height: 98px; object-fit: contain; }
@@ -434,6 +450,7 @@ table.compare td:first-child { color: var(--muted); }
   .start { max-width: 520px; margin-inline: auto; width: 100%; }
   .hero h1 { font-size: 34px; }
   .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); overflow: visible; padding: 2px 0 6px; margin: 0; }
+  .row-wrap { margin: 0; }
   .pcard { min-width: 0; }
   .hint { display: none; }
   .bubble { max-width: 76%; }
