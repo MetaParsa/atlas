@@ -1,7 +1,9 @@
 """Torob in-store shopping agent — web app (one origin: UI, API and admin; spec D19)."""
 
+import faulthandler
 import html
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -13,6 +15,10 @@ from fastapi import Cookie, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+if hasattr(signal, "SIGUSR1"):   # `docker kill -s USR1 torob` writes every thread's stack to the log (diagnosing a hang)
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
+
 
 from core.agent_loop import Emitter
 from core.llm import FakeLLM, LLMClient, from_env
