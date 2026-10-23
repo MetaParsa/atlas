@@ -908,8 +908,9 @@ def _turn(llm: LLMClient, state: SessionState, em: Emitter, text: str | None, ch
             yield ask_with_options(state, em, q)
             return
         # the model's question replaces the advisor's; while it is open, no comparison (the answer changes the picks)
+        asked = sum(e == "question" for e, _ in em.events)
         yield from show_products(state, em, ask=not q, intro=not q)
-        if q:
+        if q and sum(e == "question" for e, _ in em.events) == asked:   # one question per turn (e.g. not after «کجا رو نشون بدم؟»)
             yield ask_with_options(state, em, q)
     elif out.intent == "refine":
         if state.need and state.last_block_kind in ("products", "shops"):   # the cards must reflect the new conditions
